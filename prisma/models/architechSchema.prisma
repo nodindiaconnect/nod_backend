@@ -1,0 +1,47 @@
+model Architect {
+  id String @id @default(uuid())
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+
+  bio               String?
+  yearsOfExperience Int
+  experienceLevel   ExperienceLevel
+  specializations   String // store JSON.stringify(ArchitectSpecialization[])
+
+  licenseNumber      String             @unique
+  licenseIssuingBody String?
+  certifications     String // JSON string
+  portfolioLinks     String // JSON string
+  verificationStatus VerificationStatus @default(PENDING)
+
+  serviceCities    String // JSON string
+  minBudgetHandled Float
+  maxBudgetHandled Float
+  availability     AvailabilityStatus @default(AVAILABLE)
+
+  rating       Float @default(0)
+  totalReviews Int   @default(0)
+
+  totalQuotationsSent Int @default(0)
+  quotationsPending   Int @default(0)
+  quotationsAccepted  Int @default(0)
+  quotationsRejected  Int @default(0)
+
+  totalProjectsHandled Int @default(0)
+  projectsInProgress   Int @default(0)
+  projectsCompleted    Int @default(0)
+
+  bids Bid[]
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([licenseNumber])
+  @@index([verificationStatus])
+  @@index([availability])
+}

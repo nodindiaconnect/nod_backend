@@ -1,0 +1,47 @@
+model User {
+  id          String  @id @default(uuid())
+  name        String
+  username    String? @unique
+  email       String
+  phone       String?
+  countryCode String?
+  password    String
+  role        Int     @default(1)
+
+  isVerified   Boolean @default(false)
+  isRegistered Boolean @default(false)
+  isActive     Boolean @default(false)
+  isBlocked    Boolean @default(false)
+  isDeleted    Boolean @default(false)
+  forgotReq    Boolean @default(false)
+
+  loginTime      DateTime?
+  registeredDate DateTime?
+  activeDate     DateTime?
+
+  country String? @default("N/A")
+  state   String? @default("N/A")
+  city    String? @default("N/A")
+  address String? @default("N/A")
+  profile String?
+
+  walletBalance Float @default(0)
+
+  otps     Otp[]
+  wallets  Wallet[]
+  projects Project[] // opposite side of Project.client relation
+products  Product[]
+  architect  Architect?
+  contractor Contractor?
+  designer   Designer?
+
+  contactDetails ContactDetails?
+
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([isDeleted])
+  @@index([isActive, isBlocked])
+}

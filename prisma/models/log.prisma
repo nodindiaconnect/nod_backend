@@ -1,0 +1,14 @@
+// ─────────────────────────────────────────────────────────
+// LOG
+// Direct conversion of the Mongoose `logs` schema.
+// ─────────────────────────────────────────────────────────
+model Log {
+  id String @id @default(uuid())
+
+  path        String // required
+  err_message String? // optional, same as Mongoose (no `required`)
+  err         String // required
+  err_date    DateTime // required
+
+  @@map("logs")
+}

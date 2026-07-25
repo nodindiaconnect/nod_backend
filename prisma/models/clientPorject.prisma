@@ -1,0 +1,73 @@
+model Project {
+  id String @id @default(uuid())
+
+  client   User   @relation(fields: [clientId], references: [id])
+  clientId String
+
+  title            String
+  category         ProjectCategory
+servicesRequired ServiceType[]
+  description      String
+
+  address           String
+  city              String
+  state             String
+  pincode           String
+  propertySize      Float
+  numberOfFloors    Int?
+  numberOfBedrooms  Int?
+  numberOfBathrooms Int?
+  propertyStatus    PropertyStatus
+
+designStyle DesignStyle[]
+  colorPreferences     String?
+  spaceRequirements SpaceRequirement[]
+  accessibilityNeeds   String?
+  spaceUsers           String?
+  currentSpaceLikes    String?
+  currentSpaceProblems String?
+  clientInvolvement    ClientInvolvement?
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  budgetMin Float
+  budgetMax Float
+
+  startDate      DateTime
+  completionDate DateTime
+
+  priority Priority @default(NORMAL)
+
+  siteVisitRequired      Boolean            @default(false)
+  preferredCommunication CommunicationMode?
+  preferredWorkingHours  String?
+  additionalNotes        String?
+
+  status ProjectStatus @default(WAITING_FOR_QUOTATIONS)
+
+  attachments Attachment[]
+  bids        Bid[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([category])
+  @@index([status])
+}
+
+model Attachment {
+  id String @id @default(uuid())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+
+  type AttachmentType
+
+  url String
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
