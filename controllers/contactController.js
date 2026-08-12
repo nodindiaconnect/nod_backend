@@ -1,46 +1,19 @@
 import prisma from "../config/prismaClient.js";
+import emailService from "../helper/emailService.js";
+import { validatePopupLead, validateContactSectionLead } from "../helper/leadValidators.js";
+console.log(Object.getOwnPropertyNames(emailService));
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^\d{7,10}$/;
-const PINCODE_RE = /^\d{6}$/;
+
+const LEAD_NOTIFICATION_RECIPIENTS = ["nodindiaconnect@gmail.com"];
 
 class ContactController {
 
-    static async submitContactLead(req, res) {
+    // POST /api/leads/popup
+    static async submitPopupLead(req, res) {
         try {
-            const {
-                name,
-                email,
-                countryCode = "+91",
-                phone,
-                pincode,
-                company,
-                details,
-                source = "other",
-            } = req.body || {};
+            const { valid, errors, clean } = validatePopupLead(req.body);
 
-
-            // Validation
-            const errors = {};
-
-            if (!name || typeof name !== "string" || name.trim().length < 2) {
-                errors.name = "Enter a valid name";
-            }
-
-            if (!phone || !PHONE_RE.test(String(phone).trim())) {
-                errors.phone = "Enter a valid phone number";
-            }
-
-            if (email && !EMAIL_RE.test(String(email).trim())) {
-                errors.email = "Enter a valid email address";
-            }
-
-            if (pincode && !PINCODE_RE.test(String(pincode).trim())) {
-                errors.pincode = "Enter a valid 6-digit pincode";
-            }
-
-
-            if (Object.keys(errors).length > 0) {
+            if (!valid) {
                 return res.status(400).json({
                     success: false,
                     message: "Validation failed",
@@ -48,42 +21,24 @@ class ContactController {
                 });
             }
 
-
-            // Create Lead
             const lead = await prisma.contactLead.create({
                 data: {
-                    name: name.trim(),
-
-                    email: email
-                        ? email.trim()
-                        : null,
-
-                    countryCode: countryCode?.trim() || "+91",
-
-                    phone: phone.trim(),
-
-                    pincode: pincode
-                        ? pincode.trim()
-                        : null,
-
-                    company: company
-                        ? company.trim()
-                        : null,
-
-                    details: details
-                        ? details.trim()
-                        : null,
-
-                    source,
-
+                    name: clean.name,
+                    countryCode: clean.countryCode,
+                    phone: clean.phone,
+                    details: clean.details,
+                    source: clean.source,
                     status: "new",
-
                     ip: req.ip,
-
                     userAgent: req.get("user-agent") || null,
                 },
             });
 
+            try {
+                await emailService.sendPopupLeadMail(lead, LEAD_NOTIFICATION_RECIPIENTS);
+            } catch (emailErr) {
+                console.error("Failed to send popup lead notification email:", emailErr.message);
+            }
 
             return res.status(201).json({
                 success: true,
@@ -96,14 +51,61 @@ class ContactController {
                 },
             });
 
+        } catch (error) {
+            console.error("submitPopupLead error:", error);
+            return res.status(500).json({
+                success: false,
+                message: "Something went wrong. Please try again.",
+            });
+        }
+    }
+
+    // POST /api/leads/contact
+    static async submitContactSectionLead(req, res) {
+        try {
+            const { valid, errors, clean } = validateContactSectionLead(req.body);
+
+            if (!valid) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Validation failed",
+                    errors,
+                });
+            }
+
+            const lead = await prisma.contactLead.create({
+                data: {
+                    name: clean.name,
+                    email: clean.email,
+                    phone: clean.phone,
+                    company: clean.company || null,
+                    details: clean.details,
+                    source: clean.source,
+                    status: "new",
+                    ip: req.ip,
+                    userAgent: req.get("user-agent") || null,
+                },
+            });
+
+            try {
+                await emailService.sendContactSectionLeadMail(lead, LEAD_NOTIFICATION_RECIPIENTS);
+            } catch (emailErr) {
+                console.error("Failed to send contact-section lead notification email:", emailErr.message);
+            }
+
+            return res.status(201).json({
+                success: true,
+                message: "Thanks! Someone from our team will be in touch shortly.",
+                data: {
+                    id: lead.id,
+                    name: lead.name,
+                    email: lead.email,
+                    createdAt: lead.createdAt,
+                },
+            });
 
         } catch (error) {
-
-            console.error(
-                "submitContactLead error:",
-                error
-            );
-
+            console.error("submitContactSectionLead error:", error);
             return res.status(500).json({
                 success: false,
                 message: "Something went wrong. Please try again.",
@@ -112,6 +114,5 @@ class ContactController {
     }
 
 }
-
 
 export default ContactController;

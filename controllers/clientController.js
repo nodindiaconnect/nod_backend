@@ -1,9 +1,23 @@
+
+
+
 import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
 
 import pkg from "@prisma/client";
 const { Prisma } = pkg;
 
+const ACCOUNT_TYPES = {
+    Client: 1,
+    Designer: 2,
+    Architect: 3,
+    Contractor: 4,
+    MaterialSupplier: 5,
+};
+
+const ACCOUNT_TYPE_NAMES = Object.fromEntries(
+    Object.entries(ACCOUNT_TYPES).map(([name, code]) => [code, name])
+);
 
 const ENUMS = {
     category: ["RESIDENTIAL", "COMMERCIAL", "OFFICE", "VILLA", "APARTMENT"],
@@ -31,7 +45,7 @@ const ENUMS = {
         "ACTIVELY_INVOLVED",
     ],
     priority: ["URGENT", "NORMAL", "FLEXIBLE"],
-    preferredCommunication: ["CHAT", "PHONE", "VIDEO_CALL"],
+    preferredCommunication: ["CHAT"],
     attachmentType: ["FLOOR_PLAN", "PROPERTY_PHOTO", "REFERENCE_IMAGE", "VIDEO"],
 };
 
@@ -40,17 +54,80 @@ function validateEnum(value, allowed, fieldName, errors) {
     const values = Array.isArray(value) ? value : [value];
     const invalid = values.filter((v) => !allowed.includes(v));
     if (invalid.length) {
-        errors.push(`${fieldName}: invalid value(s) ${invalid.join(", ")}`);
+        errors.push({ field: fieldName, message: `Invalid value(s): ${invalid.join(", ")}` });
     }
 }
 
+const LENGTH_LIMITS = {
+    title: { min: 3, max: 150 },
+    description: { min: 30, max: 2000 },
+    address: { min: 5, max: 300 },
+    city: { min: 2, max: 100 },
+    state: { min: 2, max: 100 },
+    pincode: { min: 3, max: 12 },
+    accessibilityNeeds: { min: 0, max: 500 },
+    spaceUsers: { min: 0, max: 300 },
+    currentSpaceLikes: { min: 0, max: 1000 },
+    currentSpaceProblems: { min: 0, max: 1000 },
+    preferredWorkingHours: { min: 0, max: 100 },
+    additionalNotes: { min: 0, max: 2000 },
+    colorPreferences: { min: 0, max: 500 },
+};
+
+function validateLength(value, fieldName, errors) {
+    const bounds = LENGTH_LIMITS[fieldName];
+    if (!bounds || value === undefined || value === null) return;
+    const len = String(value).trim().length;
+    if (len === 0) return;
+    if (len < bounds.min) {
+        errors.push({
+            field: fieldName,
+            message: `${fieldName} must be at least ${bounds.min} characters (got ${len}).`,
+        });
+    } else if (len > bounds.max) {
+        errors.push({
+            field: fieldName,
+            message: `${fieldName} must be under ${bounds.max} characters (got ${len}).`,
+        });
+    }
+}
+
+const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const COLOR_NAME_RE = /^[a-zA-Z][a-zA-Z\s-]{1,29}$/;
+
+function validateColorPreferences(value, errors) {
+    if (!value) return;
+    const entries = String(value).split(",").map((v) => v.trim()).filter(Boolean);
+    const invalid = entries.filter((c) => !HEX_COLOR_RE.test(c) && !COLOR_NAME_RE.test(c));
+    if (invalid.length) {
+        errors.push({
+            field: "colorPreferences",
+            message: `Invalid color value(s): ${invalid.join(", ")}. Use a color name (e.g. "Red") or hex code (e.g. "#8A8F98").`,
+        });
+    }
+}
+
+// Helper function for pagination
+const getPaginationParams = (req) => {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const skip = (page - 1) * limit;
+    return { page, limit, skip };
+};
+
 class ClientController {
+
+    static async getProjectEnums(req, res) {
+        try {
+            return helper.success(res, "Enums fetched successfully", ENUMS);
+        } catch (error) {
+            return res.status(500).json({ success: false, message: "Failed to fetch enums" });
+        }
+    }
 
     static async getUserDetails(req, res, next) {
         try {
             const userId = req.user.id;
-
-            console.log(userId,"userId1q2w34")
 
             const [user, projectStats] = await Promise.all([
                 prisma.user.findUnique({
@@ -123,13 +200,25 @@ class ClientController {
                 }
             });
 
+            const response = {
+                id: user.id,
+                name: user.name,
+                username: user.username,
+                email: user.email,
+                phone: user.phone,
+                role: ACCOUNT_TYPE_NAMES[user.role] ?? "Unknown",
+                country: user.country,
+                state: user.state,
+                city: user.city,
+                address: user.address,
+                walletBalance: user.walletBalance,
+                projectStats: stats,
+            };
+
             return helper.success(
                 res,
                 "User details fetched successfully",
-                {
-                    ...user,
-                    projectStats: stats,
-                }
+                response
             );
         } catch (error) {
             next(error);
@@ -137,13 +226,11 @@ class ClientController {
     }
 
 
-
     static async createProject(req, res) {
         try {
             const body = req.body;
             const errors = [];
 
-            // ---- Required field checks (Step 1, 2, 4) ----
             const required = [
                 "title",
                 "category",
@@ -166,12 +253,15 @@ class ClientController {
                     body[field] === null ||
                     body[field] === ""
                 ) {
-                    errors.push(`${field} is required`);
+                    errors.push({ field, message: `${field} is required` });
                 }
             });
 
+            Object.keys(LENGTH_LIMITS).forEach((field) => {
+                if (field === "colorPreferences") return;
+                validateLength(body[field], field, errors);
+            });
 
-            // ---- Enum validation ----
             validateEnum(body.category, ENUMS.category, "category", errors);
             validateEnum(
                 body.servicesRequired,
@@ -206,53 +296,55 @@ class ClientController {
                 errors
             );
 
-            // ---- Cross-field logic ----
-            // currentSpaceLikes / currentSpaceProblems only make sense if not new construction
+            validateColorPreferences(body.colorPreferences, errors);
+            validateLength(body.colorPreferences, "colorPreferences", errors);
+
             if (
                 body.propertyStatus === "NEW_CONSTRUCTION" &&
                 (body.currentSpaceLikes || body.currentSpaceProblems)
             ) {
-                errors.push(
-                    "currentSpaceLikes/currentSpaceProblems are not applicable for NEW_CONSTRUCTION"
-                );
+                errors.push({
+                    field: "propertyStatus",
+                    message: "currentSpaceLikes/currentSpaceProblems are not applicable for NEW_CONSTRUCTION",
+                });
             }
 
             if (Number(body.budgetMin) > Number(body.budgetMax)) {
-                errors.push("budgetMin cannot be greater than budgetMax");
+                errors.push({ field: "budgetMin", message: "budgetMin cannot be greater than budgetMax" });
             }
 
             if (new Date(body.startDate) > new Date(body.completionDate)) {
-                errors.push("startDate cannot be after completionDate");
+                errors.push({ field: "startDate", message: "startDate cannot be after completionDate" });
             }
 
             if (errors.length) {
-                return res.status(400).json({ success: false, errors });
+                return res.status(400).json({
+                    success: false,
+                    message: "Please fix the highlighted fields and try again.",
+                    errors: errors.map((e) => e.message),
+                    fieldErrors: errors,
+                });
             }
 
-            // ---- Build attachment records from Supabase Storage URLs ----
-            // Files are uploaded directly to Supabase Storage from the
-            // frontend (see ProjectsPage.jsx / superBase.js). By the time
-            // this request arrives, req.body already contains the public
-            // URLs for each uploaded file type — there is no local file on
-            // disk and req.files will always be empty, so we must NOT rely
-            // on multer here.
+            // ---- Build attachment records from Supabase Storage URL arrays ----
             const FILE_URL_FIELDS = [
-                { field: "floorPlanUrl", type: "FLOOR_PLAN" },
-                { field: "propertyPhotoUrl", type: "PROPERTY_PHOTO" },
-                { field: "referenceImageUrl", type: "REFERENCE_IMAGE" },
-                { field: "videoUrl", type: "VIDEO" },
+                { field: "floorPlanUrls", type: "FLOOR_PLAN" },
+                { field: "propertyPhotoUrls", type: "PROPERTY_PHOTO" },
+                { field: "referenceImageUrls", type: "REFERENCE_IMAGE" },
+                { field: "videoUrls", type: "VIDEO" },
             ];
 
-            const attachmentData = FILE_URL_FIELDS.filter(
-                ({ field }) => body[field]
-            ).map(({ field, type }) => ({
-                type,
-                url: body[field],
-            }));
+            const attachmentData = FILE_URL_FIELDS.flatMap(({ field, type }) => {
+                const urls = body[field];
+                if (!Array.isArray(urls) || urls.length === 0) return [];
+                return urls
+                    .filter((url) => typeof url === "string" && url.trim() !== "")
+                    .map((url) => ({ type, url }));
+            });
 
             const project = await prisma.project.create({
                 data: {
-                    clientId: req.user.id, // assumes auth middleware sets req.user
+                    clientId: req.user.id,
                     title: body.title,
                     category: body.category,
                     servicesRequired: Array.isArray(body.servicesRequired)
@@ -331,6 +423,8 @@ class ClientController {
         }
     }
 
+
+
     static async getProjectById(req, res) {
         try {
             const project = await prisma.project.findUnique({
@@ -353,47 +447,112 @@ class ClientController {
         }
     }
 
+    // ======== UPDATED WITH PAGINATION ========
+
 
     static async listProjects(req, res) {
-    try {
-        const userId = req.user.id;
-        const { category, service, status, city } = req.query;
+        try {
+            const userId = req.user.id;
+            const { category, service, status, city } = req.query;
+            const { page, limit, skip } = getPaginationParams(req);
 
-        const where = {
-            clientId: userId,
-        };
+            const where = {
+                clientId: userId,
+            };
 
-        if (category) where.category = category;
-        if (status) where.status = status;
-        if (city) where.city = city;
-        if (service) where.servicesRequired = { has: service };
+            if (category) where.category = category;
+            if (status) where.status = status;
+            if (city) where.city = city;
+            if (service) where.servicesRequired = { has: service };
 
-        const projects = await prisma.project.findMany({
-            where,
-            include: {
-                attachments: true,
-            },
-            orderBy: {
-                createdAt: "desc",
-            },
-        });
+            const [projects, totalProjects] = await Promise.all([
+                prisma.project.findMany({
+                    where,
+                    include: {
+                        attachments: true,
+                    },
+                    orderBy: {
+                        createdAt: "desc",
+                    },
+                    skip,
+                    take: limit,
+                }),
+                prisma.project.count({ where }),
+            ]);
 
-        return res.json({
-            success: true,
-            data: projects,
-        });
-    } catch (err) {
-        console.error("listProjects error:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to list projects",
-        });
+            return res.json({
+                success: true,
+                data: projects,
+                pagination: {
+                    total: totalProjects,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(totalProjects / limit),
+                },
+            });
+        } catch (err) {
+            console.error("listProjects error:", err);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to list projects",
+            });
+        }
     }
+
+
+
+
+    static async updateProjectAvailability(req, res) {
+        try {
+            const { projectId } = req.params;
+            const { status } = req.body;
+
+            if (!["OPEN", "CLOSED"].includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid availability status",
+                });
+            }
+
+            const project = await prisma.project.findUnique({
+                where: {
+                    id: projectId,
+                },
+            });
+
+            if (!project) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Project not found",
+                });
+            }
+
+            const updatedProject = await prisma.project.update({
+                where: {
+                    id: projectId,
+                },
+                data: {
+                    availabilityStatus: status,
+                },
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Project availability status updated successfully",
+                data: updatedProject,
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to update project availability status",
+                error: error.message,
+            });
+        }
+    }
+
+
 }
-
-
-
-}
-
 
 export default ClientController;
+
+

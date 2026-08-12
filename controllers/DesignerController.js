@@ -1,6 +1,21 @@
 import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
 
+
+const ACCOUNT_TYPES = {
+    Client: 1,
+    Designer: 2,
+    Architect: 3,
+    Contractor: 4,
+    MaterialSupplier: 5,
+};
+
+const ACCOUNT_TYPE_NAMES = Object.fromEntries(
+    Object.entries(ACCOUNT_TYPES).map(([name, code]) => [code, name])
+);
+
+
+
 class DesignController {
     static async getUserDetails(req, res, next) {
         try {
@@ -45,7 +60,17 @@ class DesignController {
             });
 
             return helper.success(res, "User details fetched successfully", {
-                ...user,
+                id: user.id,
+                name: user.name,
+                username: user.username,
+                email: user.email,
+                phone: user.phone,
+                role: ACCOUNT_TYPE_NAMES[user.role] ?? "Unknown",
+                country: user.country,
+                state: user.state,
+                city: user.city,
+                address: user.address,
+                walletBalance: user.walletBalance,
                 projectStats: {
                     totalProjects: designer?.totalProjectsHandled ?? 0,
                     activeProjects: designer?.projectsInProgress ?? 0,
@@ -144,33 +169,93 @@ class DesignController {
     }
 
 
+    // static async getProjectsToBid(req, res) {
+    //     try {
+    //         const { status } = req.query
+    //         const page = parseInt(req.query.page, 10) || 1
+    //         const limit = parseInt(req.query.limit, 10) || 10
+    //         const skip = (page - 1) * limit
+
+    //         const where = {
+    //             servicesRequired: { has: "ARCHITECT" },
+    //             ...(status ? { status } : {}),
+    //         }
+
+    //         const [projects, totalProjects] = await Promise.all([
+    //             prisma.project.findMany({
+    //                 where,
+    //                 include: {
+    //                     attachments: true,
+    //                 },
+    //                 orderBy: { createdAt: "desc" },
+    //                 skip,
+    //                 take: limit,
+    //             }),
+    //             prisma.project.count({ where }),
+    //         ])
+
+    //         return res.status(200).json({
+    //             success: true,
+    //             data: projects,
+    //             pagination: {
+    //                 total: totalProjects,
+    //                 page,
+    //                 limit,
+    //                 totalPages: Math.ceil(totalProjects / limit),
+    //             },
+    //         })
+    //     } catch (err) {
+    //         console.error("designerController.getProjects error:", err)
+    //         return res.status(500).json({ success: false, message: "Failed to fetch projects" })
+    //     }
+    // }
+
+    // PATCH /api/designer/quotations/:bidId/withdraw
+
+
+
     static async getProjectsToBid(req, res) {
         try {
             const { status } = req.query
+            const page = parseInt(req.query.page, 10) || 1
+            const limit = parseInt(req.query.limit, 10) || 10
+            const skip = (page - 1) * limit
 
-            const projects = await prisma.project.findMany({
-                where: {
-                    servicesRequired: { has: "ARCHITECT" },
-                    ...(status ? { status } : {}),
-                },
-                include: {
-                    attachments: true,
-                },
-                orderBy: { createdAt: "desc" },
-            })
-
-            if (!projects.length) {
-                return res.status(200).json({ success: true, data: [] })
+            const where = {
+                servicesRequired: { has: "ARCHITECT" },
+                availabilityStatus: "OPEN",   // ✅ only fetch projects open for bidding
+                ...(status ? { status } : {}),
             }
 
-            return res.status(200).json({ success: true, data: projects })
+            const [projects, totalProjects] = await Promise.all([
+                prisma.project.findMany({
+                    where,
+                    include: {
+                        attachments: true,
+                    },
+                    orderBy: { createdAt: "desc" },
+                    skip,
+                    take: limit,
+                }),
+                prisma.project.count({ where }),
+            ])
+
+            return res.status(200).json({
+                success: true,
+                data: projects,
+                pagination: {
+                    total: totalProjects,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(totalProjects / limit),
+                },
+            })
         } catch (err) {
             console.error("designerController.getProjects error:", err)
             return res.status(500).json({ success: false, message: "Failed to fetch projects" })
         }
     }
 
-    // PATCH /api/designer/quotations/:bidId/withdraw
     static async withdrawQuotation(req, res) {
         try {
             const userId = req.user.id

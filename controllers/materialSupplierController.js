@@ -5,6 +5,53 @@
 import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
 
+
+
+const ACCOUNT_TYPES = {
+    Client: 1,
+    Designer: 2,
+    Architect: 3,
+    Contractor: 4,
+    MaterialSupplier: 5,
+};
+
+const ACCOUNT_TYPE_NAMES = Object.fromEntries(
+    Object.entries(ACCOUNT_TYPES).map(([name, code]) => [code, name])
+);
+
+
+const FIELD_LIMITS = {
+    sku: 50,
+    productName: 150,
+    category: 60,
+    subCategory: 60,
+    brand: 60,
+    description: 1000,
+    specifications: 2000,
+    unit: 30,
+    material: 60,
+    color: 40,
+    warranty: 100,
+    deliveryTime: 100,
+    thumbnail: 500,
+};
+
+function validateFieldLengths(body) {
+    const errors = [];
+    for (const [field, max] of Object.entries(FIELD_LIMITS)) {
+        const val = body[field];
+        if (typeof val === "string" && val.length > max) {
+            errors.push(`${field} must not exceed ${max} characters`);
+        }
+    }
+    if (Array.isArray(body.images) && body.images.length > 10) {
+        errors.push("images must not exceed 10 items");
+    }
+    return errors;
+}
+
+
+
 class MaterialSupplierController {
 
     static async getUserDetails(req, res, next) {
@@ -49,16 +96,29 @@ class MaterialSupplierController {
             });
 
             return helper.success(res, "User details fetched successfully", {
-                ...user,
-                totalProducts,
-                activeProducts,
-                outOfStockProducts,
+                id: user.id,
+                name: user.name,
+                username: user.username,
+                email: user.email,
+                phone: user.phone,
+                role: ACCOUNT_TYPE_NAMES[user.role] ?? "Unknown",
+                country: user.country,
+                state: user.state,
+                city: user.city,
+                address: user.address,
+                walletBalance: user.walletBalance,
+                productStats: {
+                    totalProducts,
+                    activeProducts,
+                    outOfStockProducts,
+                },
             });
         } catch (error) {
             next(error);
         }
     }
 
+    // ---------------- CREATE PRODUCT ----------------
     // ---------------- CREATE PRODUCT ----------------
     static async createProduct(req, res, next) {
         try {
@@ -93,6 +153,11 @@ class MaterialSupplierController {
 
             if (!productName || !category || !unit || price === undefined) {
                 return helper.failed(res, "productName, category, unit and price are required");
+            }
+
+            const lengthErrors = validateFieldLengths(req.body);
+            if (lengthErrors.length > 0) {
+                return helper.failed(res, lengthErrors.join("; "));
             }
 
             if (sku) {
@@ -632,7 +697,12 @@ class MaterialSupplierController {
             });
 
             if (!contact) {
-                return helper.notFound(res, "Contact details not found");
+                return helper.failed(
+                    res,
+                    "Contact details not found",
+                    {},
+                    400
+                );
             }
 
             return helper.success(

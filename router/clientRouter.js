@@ -10,8 +10,13 @@ router.get("/userDetails", Auth, ClientController.getUserDetails);
 
 router.post("/createProject", Auth, ClientController.createProject);
 
-router.get("/projects", Auth, ClientController.listProjects);
+router.get("/clientprojects", Auth, ClientController.listProjects);
 
 router.get("/projects/:id", Auth, ClientController.getProjectById);
+
+router.get("/projectEnums", Auth, ClientController.getProjectEnums);
+
+router.post("/projects/:projectId/availability-status", ClientController.updateProjectAvailability
+);
 
 export default router;

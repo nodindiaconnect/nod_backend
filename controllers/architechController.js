@@ -1,6 +1,20 @@
 import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
 
+
+const ACCOUNT_TYPES = {
+    Client: 1,
+    Designer: 2,
+    Architect: 3,
+    Contractor: 4,
+    MaterialSupplier: 5,
+};
+
+const ACCOUNT_TYPE_NAMES = Object.fromEntries(
+    Object.entries(ACCOUNT_TYPES).map(([name, code]) => [code, name])
+);
+
+
 class ArchitechController {
 
 
@@ -37,7 +51,19 @@ class ArchitechController {
                 return helper.failed(res, "User not found");
             }
 
-            return helper.success(res, "User details fetched successfully", user);
+            return helper.success(res, "User details fetched successfully", {
+                id: user.id,
+                name: user.name,
+                username: user.username,
+                email: user.email,
+                phone: user.phone,
+                role: ACCOUNT_TYPE_NAMES[user.role] ?? "Unknown",
+                country: user.country,
+                state: user.state,
+                city: user.city,
+                address: user.address,
+                walletBalance: user.walletBalance,
+            });
         } catch (error) {
             next(error);
         }
@@ -99,35 +125,33 @@ class ArchitechController {
 
     // GET /api/architect/me/quotations?status=PENDING|ACCEPTED|REJECTED
     static async getQuotations(req, res) {
-
-        console.log(req.user,"req.user")
         try {
-            const userId = req.user.id
-            // const { status } = req.query
-
-            console.log(userId,"userIdqwww")
-
-            const architect = await prisma.architect.findUnique({ where: { userId } })
-            if (!architect) {
-                return res.status(400).json({ success: false, message: "Architect profile not found" })
-            }
+            const userId = req.user.id;
 
             const bids = await prisma.bid.findMany({
                 where: {
-                    architectId: architect.id,
-                    // ...(status ? { status } : {}),
+                    architectId: userId,
                 },
-                // include: { project: true },
-                orderBy: { createdAt: "desc" },
-            })
+                include: {
+                    project: true,
+                },
+                orderBy: {
+                    createdAt: "desc",
+                },
+            });
 
-            return res.status(200).json({ success: true, data: bids })
+            return res.status(200).json({
+                success: true,
+                data: bids,
+            });
         } catch (err) {
-            console.error("architectController.getQuotations error:", err)
-            return res.status(500).json({ success: false, message: "Failed to fetch quotations" })
+            console.error("architectController.getQuotations error:", err);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch quotations",
+            });
         }
     }
-
     // POST /api/architect/quotations
     // Send a new quotation/bid on a project
     static async sendQuotation(req, res) {
@@ -177,31 +201,96 @@ class ArchitechController {
 
     // GET /api/architect/me/projects?status=IN_PROGRESS|COMPLETED
 
+
+
+    // GET /api/architect/me/projects?status=IN_PROGRESS|COMPLETED&page=1&limit=10
+    // static async getProjectsToBid(req, res) {
+    //     try {
+    //         const { status } = req.query
+    //         const page = parseInt(req.query.page, 10) || 1
+    //         const limit = parseInt(req.query.limit, 10) || 10
+    //         const skip = (page - 1) * limit
+
+    //         const where = {
+    //             servicesRequired: { has: "ARCHITECT" },
+    //             ...(status ? { status } : {}),
+    //         }
+
+    //         const [projects, totalProjects] = await Promise.all([
+    //             prisma.project.findMany({
+    //                 where,
+    //                 include: {
+    //                     attachments: true,
+    //                 },
+    //                 orderBy: { createdAt: "desc" },
+    //                 skip,
+    //                 take: limit,
+    //             }),
+    //             prisma.project.count({ where }),
+    //         ])
+
+    //         return res.status(200).json({
+    //             success: true,
+    //             data: projects,
+    //             pagination: {
+    //                 total: totalProjects,
+    //                 page,
+    //                 limit,
+    //                 totalPages: Math.ceil(totalProjects / limit),
+    //             },
+    //         })
+    //     } catch (err) {
+    //         console.error("architectController.getProjects error:", err)
+    //         return res.status(500).json({ success: false, message: "Failed to fetch projects" })
+    //     }
+    // }
+
+
     static async getProjectsToBid(req, res) {
         try {
             const { status } = req.query
+            const page = parseInt(req.query.page, 10) || 1
+            const limit = parseInt(req.query.limit, 10) || 10
+            const skip = (page - 1) * limit
 
-            const projects = await prisma.project.findMany({
-                where: {
-                    servicesRequired: { has: "ARCHITECT" },
-                    ...(status ? { status } : {}),
-                },
-                include: {
-                    attachments: true,
-                },
-                orderBy: { createdAt: "desc" },
-            })
-
-            if (!projects.length) {
-                return res.status(200).json({ success: true, data: [] })
+            const where = {
+                servicesRequired: { has: "ARCHITECT" },
+                availabilityStatus: "OPEN",   // ✅ only fetch projects open for bidding
+                ...(status ? { status } : {}),
             }
 
-            return res.status(200).json({ success: true, data: projects })
+            const [projects, totalProjects] = await Promise.all([
+                prisma.project.findMany({
+                    where,
+                    include: {
+                        attachments: true,
+                    },
+                    orderBy: { createdAt: "desc" },
+                    skip,
+                    take: limit,
+                }),
+                prisma.project.count({ where }),
+            ])
+
+            return res.status(200).json({
+                success: true,
+                data: projects,
+                pagination: {
+                    total: totalProjects,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(totalProjects / limit),
+                },
+            })
         } catch (err) {
-            console.error("designerController.getProjects error:", err)
+            console.error("architectController.getProjects error:", err)
             return res.status(500).json({ success: false, message: "Failed to fetch projects" })
         }
     }
+
+
+
+
     // PATCH /api/architect/quotations/:bidId/withdraw
     static async withdrawQuotation(req, res) {
         try {

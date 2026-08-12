@@ -7,6 +7,7 @@ import ContractorRouter from "./contractorRouter.js"
 import AdminRouter from "./adminRoutes/adminAllRoutes.js"
 import MaterialSupplier from "./materialSupplierRouter.js"
 import contactRouter from "./contactRouter.js"
+import PortfolioRouter from "./postFollowRouter.js"
 let router = Router();
 
 // chatbotRoutes#########################################
@@ -26,6 +27,7 @@ router.use("/Architech", ArchitechRouter);
 router.use("/Contractor", ContractorRouter);
 router.use("/materialSupplier", MaterialSupplier);
 router.use("/contact", contactRouter);
+router.use("/portfolio", PortfolioRouter);
 
 router.use("/Designer", DesignerRouter);
 export default router;

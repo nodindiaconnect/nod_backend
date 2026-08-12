@@ -1,79 +1,83 @@
 import prisma from "../../config/prismaClient.js";
 
-
-// page/limit from query string, always returns safe positive numbers
-const buildPagination = (req) => {
-  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
-  const skip = (page - 1) * limit;
-  return { page, limit, skip };
+const ACCOUNT_TYPES = {
+  Client: 1,
+  Designer: 2,
+  Architect: 3,
+  Contractor: 4,
+  MaterialSupplier: 5,
 };
 
-// case-insensitive search across the fields users are likely to search by
-const buildSearchWhere = (search) => {
-  if (!search || !search.trim()) return {};
-  const term = search.trim();
-  return {
-    OR: [
-      { name: { contains: term, mode: "insensitive" } },
-      { username: { contains: term, mode: "insensitive" } },
-      { email: { contains: term, mode: "insensitive" } },
-      { phone: { contains: term, mode: "insensitive" } },
-      { city: { contains: term, mode: "insensitive" } },
-    ],
-  };
-};
-
-const paginatedResponse = (res, users, counts, page, limit) => {
-  const { total, active, blocked } = counts;
-  return res.status(200).json({
-    success: true,
-    data: users,
-    pagination: {
-      jaimax_users: total,
-      blocked,
-      total,
-      active,
-      page,
-      limit,
-      totalPages: Math.max(Math.ceil(total / limit), 1),
-    },
-  });
-};
-
-// runs total/active/blocked counts for a given role's where clause (minus isBlocked)
-const getUserCounts = async (baseWhere) => {
-  const [total, blocked] = await Promise.all([
-    prisma.user.count({ where: baseWhere }),
-    prisma.user.count({ where: { ...baseWhere, isBlocked: true } }),
-  ]);
-  return { total, blocked, active: total - blocked };
-};
+const ACCOUNT_TYPE_NAMES = Object.fromEntries(
+  Object.entries(ACCOUNT_TYPES).map(([name, code]) => [code, name])
+);
 
 class UserController {
 
   // Get Clients (role 1) — paginated + searchable
   static async getClientUsers(req, res) {
     try {
-      const { page, limit, skip } = buildPagination(req);
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+      const skip = (page - 1) * limit;
+      const search = (req.query.search || "").trim();
 
       const where = {
         role: 1,
         isDeleted: false,
-        ...buildSearchWhere(req.query.search),
       };
 
-      const [users, counts] = await Promise.all([
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { username: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
+          { city: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [users, total, blocked] = await Promise.all([
         prisma.user.findMany({
           where,
           orderBy: { createdAt: "desc" },
           skip,
           take: limit,
         }),
-        getUserCounts(where),
+        prisma.user.count({ where }),
+        prisma.user.count({ where: { ...where, isBlocked: true } }),
       ]);
 
-      return paginatedResponse(res, users, counts, page, limit);
+      const data = users.map((user) => {
+        const {
+          isDeleted,
+          forgotReq,
+          loginTime,
+          registeredDate,
+          activeDate,
+          isVerified,
+          isRegistered,
+          lockedUntil,
+          failedLoginAttempts,
+          role,
+          ...rest
+        } = user;
+        return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
+      });
+
+      return res.status(200).json({
+        success: true,
+        data,
+        pagination: {
+          Nod_users: total,
+          blocked,
+          total,
+          active: total - blocked,
+          page,
+          limit,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      });
 
     } catch (error) {
       return res.status(500).json({
@@ -87,25 +91,65 @@ class UserController {
   // Get Designers (role 2) — paginated + searchable
   static async getDesignerUsers(req, res) {
     try {
-      const { page, limit, skip } = buildPagination(req);
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+      const skip = (page - 1) * limit;
+      const search = (req.query.search || "").trim();
 
       const where = {
         role: 2,
         isDeleted: false,
-        ...buildSearchWhere(req.query.search),
       };
 
-      const [users, counts] = await Promise.all([
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { username: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
+          { city: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [users, total, blocked] = await Promise.all([
         prisma.user.findMany({
           where,
           orderBy: { createdAt: "desc" },
           skip,
           take: limit,
         }),
-        getUserCounts(where),
+        prisma.user.count({ where }),
+        prisma.user.count({ where: { ...where, isBlocked: true } }),
       ]);
 
-      return paginatedResponse(res, users, counts, page, limit);
+      const data = users.map((user) => {
+        const {
+          isDeleted,
+          forgotReq,
+          loginTime,
+          registeredDate,
+          activeDate,
+          isVerified,
+          isRegistered,
+          role,
+          ...rest
+        } = user;
+        return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
+      });
+
+      return res.status(200).json({
+        success: true,
+        data,
+        pagination: {
+          Nod_users: total,
+          blocked,
+          total,
+          active: total - blocked,
+          page,
+          limit,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      });
 
     } catch (error) {
       return res.status(500).json({
@@ -115,29 +159,68 @@ class UserController {
     }
   }
 
-
   // Get Architects (role 3) — paginated + searchable
   static async getArchitectUsers(req, res) {
     try {
-      const { page, limit, skip } = buildPagination(req);
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+      const skip = (page - 1) * limit;
+      const search = (req.query.search || "").trim();
 
       const where = {
         role: 3,
         isDeleted: false,
-        ...buildSearchWhere(req.query.search),
       };
 
-      const [users, counts] = await Promise.all([
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { username: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
+          { city: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [users, total, blocked] = await Promise.all([
         prisma.user.findMany({
           where,
           orderBy: { createdAt: "desc" },
           skip,
           take: limit,
         }),
-        getUserCounts(where),
+        prisma.user.count({ where }),
+        prisma.user.count({ where: { ...where, isBlocked: true } }),
       ]);
 
-      return paginatedResponse(res, users, counts, page, limit);
+      const data = users.map((user) => {
+        const {
+          isDeleted,
+          forgotReq,
+          loginTime,
+          registeredDate,
+          activeDate,
+          isVerified,
+          isRegistered,
+          role,
+          ...rest
+        } = user;
+        return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
+      });
+
+      return res.status(200).json({
+        success: true,
+        data,
+        pagination: {
+          Nod_users: total,
+          blocked,
+          total,
+          active: total - blocked,
+          page,
+          limit,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      });
 
     } catch (error) {
       return res.status(500).json({
@@ -151,25 +234,65 @@ class UserController {
   // Get Contractors (role 4) — paginated + searchable
   static async getContractorUsers(req, res) {
     try {
-      const { page, limit, skip } = buildPagination(req);
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+      const skip = (page - 1) * limit;
+      const search = (req.query.search || "").trim();
 
       const where = {
         role: 4,
         isDeleted: false,
-        ...buildSearchWhere(req.query.search),
       };
 
-      const [users, counts] = await Promise.all([
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { username: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
+          { city: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [users, total, blocked] = await Promise.all([
         prisma.user.findMany({
           where,
           orderBy: { createdAt: "desc" },
           skip,
           take: limit,
         }),
-        getUserCounts(where),
+        prisma.user.count({ where }),
+        prisma.user.count({ where: { ...where, isBlocked: true } }),
       ]);
 
-      return paginatedResponse(res, users, counts, page, limit);
+      const data = users.map((user) => {
+        const {
+          isDeleted,
+          forgotReq,
+          loginTime,
+          registeredDate,
+          activeDate,
+          isVerified,
+          isRegistered,
+          role,
+          ...rest
+        } = user;
+        return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
+      });
+
+      return res.status(200).json({
+        success: true,
+        data,
+        pagination: {
+          Nod_users: total,
+          blocked,
+          total,
+          active: total - blocked,
+          page,
+          limit,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      });
 
     } catch (error) {
       return res.status(500).json({
@@ -196,7 +319,6 @@ class UserController {
         });
       }
 
-      // Only allow whitelisted, editable fields — never password/createdAt/id
       const allowedFields = [
         "name",
         "username",
@@ -229,10 +351,22 @@ class UserController {
         data: updateData
       });
 
+      const {
+        isDeleted,
+        forgotReq,
+        loginTime,
+        registeredDate,
+        activeDate,
+        isVerified,
+        isRegistered,
+        role,
+        ...rest
+      } = updatedUser;
+
       return res.status(200).json({
         success: true,
         message: "User updated successfully",
-        data: updatedUser
+        data: { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role }
       });
 
     } catch (error) {
@@ -272,10 +406,22 @@ class UserController {
         data: { isBlocked: true }
       });
 
+      const {
+        isDeleted,
+        forgotReq,
+        loginTime,
+        registeredDate,
+        activeDate,
+        isVerified,
+        isRegistered,
+        role,
+        ...rest
+      } = updatedUser;
+
       return res.status(200).json({
         success: true,
         message: "User blocked successfully",
-        data: updatedUser
+        data: { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role }
       });
 
     } catch (error) {
@@ -315,10 +461,22 @@ class UserController {
         data: { isBlocked: false }
       });
 
+      const {
+        isDeleted,
+        forgotReq,
+        loginTime,
+        registeredDate,
+        activeDate,
+        isVerified,
+        isRegistered,
+        role,
+        ...rest
+      } = updatedUser;
+
       return res.status(200).json({
         success: true,
         message: "User unblocked successfully",
-        data: updatedUser
+        data: { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role }
       });
 
     } catch (error) {
@@ -358,10 +516,22 @@ class UserController {
         data: { isDeleted: true }
       });
 
+      const {
+        isDeleted,
+        forgotReq,
+        loginTime,
+        registeredDate,
+        activeDate,
+        isVerified,
+        isRegistered,
+        role,
+        ...rest
+      } = deletedUser;
+
       return res.status(200).json({
         success: true,
         message: "User deleted successfully",
-        data: deletedUser
+        data: { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role }
       });
 
     } catch (error) {

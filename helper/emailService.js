@@ -1,13 +1,13 @@
 import nodeMailer from "nodemailer";
 
 const SMTP_CONFIG = {
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: {
-        user: "nodindiaconnect@gmail.com",
-        pass: "zdng erej vfqb nacf",
-    },
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: "nodindiaconnect@gmail.com",
+    pass: "zdng erej vfqb nacf",
+  },
 };
 
 const FROM_EMAIL = "NOD <nodindiaconnect@gmail.com>";
@@ -208,81 +208,81 @@ const emailClose = (year = new Date().getFullYear()) => `
 // ─── Email Service ───────────────────────────────────────────────────────────
 class emailService {
 
-    static async sendMail(email, subject, htmlContent) {
-        console.log("──────────────────────────────────────────");
-        console.log(`[emailService] Preparing to send email`);
-        console.log(`[emailService] To: ${email}`);
-        console.log(`[emailService] Subject: ${subject}`);
-        console.log(`[emailService] SMTP host: ${SMTP_CONFIG.host}:${SMTP_CONFIG.port}`);
-        console.log(`[emailService] SMTP user: ${SMTP_CONFIG.auth.user}`);
+  static async sendMail(email, subject, htmlContent) {
+    console.log("──────────────────────────────────────────");
+    console.log(`[emailService] Preparing to send email`);
+    console.log(`[emailService] To: ${email}`);
+    console.log(`[emailService] Subject: ${subject}`);
+    console.log(`[emailService] SMTP host: ${SMTP_CONFIG.host}:${SMTP_CONFIG.port}`);
+    console.log(`[emailService] SMTP user: ${SMTP_CONFIG.auth.user}`);
 
-        try {
-            const transporter = nodeMailer.createTransport(SMTP_CONFIG);
+    try {
+      const transporter = nodeMailer.createTransport(SMTP_CONFIG);
 
-            // Verify SMTP connection/auth before attempting to send
-            try {
-                await transporter.verify();
-                console.log("[emailService] SMTP connection verified successfully ✅");
-            } catch (verifyErr) {
-                console.error("[emailService] SMTP verification FAILED ❌:", verifyErr.message);
-                throw verifyErr;
-            }
+      // Verify SMTP connection/auth before attempting to send
+      try {
+        await transporter.verify();
+        console.log("[emailService] SMTP connection verified successfully ✅");
+      } catch (verifyErr) {
+        console.error("[emailService] SMTP verification FAILED ❌:", verifyErr.message);
+        throw verifyErr;
+      }
 
-            const info = await transporter.sendMail({
-                from: FROM_EMAIL,
-                to: email,
-                subject,
-                html: htmlContent,
-            });
+      const info = await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: email,
+        subject,
+        html: htmlContent,
+      });
 
-            console.log("[emailService] Email SENT successfully ✅");
-            console.log(`[emailService] Message ID: ${info.messageId}`);
-            console.log(`[emailService] Accepted: ${JSON.stringify(info.accepted)}`);
-            console.log(`[emailService] Rejected: ${JSON.stringify(info.rejected)}`);
-            console.log(`[emailService] Response: ${info.response}`);
-            console.log("──────────────────────────────────────────");
+      console.log("[emailService] Email SENT successfully ✅");
+      console.log(`[emailService] Message ID: ${info.messageId}`);
+      console.log(`[emailService] Accepted: ${JSON.stringify(info.accepted)}`);
+      console.log(`[emailService] Rejected: ${JSON.stringify(info.rejected)}`);
+      console.log(`[emailService] Response: ${info.response}`);
+      console.log("──────────────────────────────────────────");
 
-            return info.messageId;
-        } catch (error) {
-            console.error("[emailService] Email FAILED to send ❌");
-            console.error(`[emailService] Error name: ${error.name}`);
-            console.error(`[emailService] Error message: ${error.message}`);
-            console.error(`[emailService] Error code: ${error.code || "N/A"}`);
-            console.error("[emailService] Full error:", error);
-            console.log("──────────────────────────────────────────");
-            throw error;
-        }
+      return info.messageId;
+    } catch (error) {
+      console.error("[emailService] Email FAILED to send ❌");
+      console.error(`[emailService] Error name: ${error.name}`);
+      console.error(`[emailService] Error message: ${error.message}`);
+      console.error(`[emailService] Error code: ${error.code || "N/A"}`);
+      console.error("[emailService] Full error:", error);
+      console.log("──────────────────────────────────────────");
+      throw error;
+    }
+  }
+
+  static async sendOtpMail(email, name, otp, otpType) {
+    console.log(`[emailService] sendOtpMail called — email: ${email}, otpType: ${otpType}, otp: ${otp}`);
+
+    let subject, purpose, message;
+
+    switch (otpType) {
+      case "register":
+        subject = `Verify Your ${BRAND_NAME} Account`;
+        purpose = "Account Registration";
+        message = `Thank you for registering with ${BRAND_NAME}! Please use the OTP below to verify your account.`;
+        break;
+      case "forgotPassword":
+        subject = `Reset Your ${BRAND_NAME} Password`;
+        purpose = "Password Reset";
+        message = "We received a request to reset your password. Please use the OTP below to proceed.";
+        break;
+      case "changePassword":
+      case "ChangePassword":
+        subject = "Verify Password Change Request";
+        purpose = "Password Change";
+        message = "We received a request to change your password. Please use the OTP below to verify this change.";
+        break;
+      default:
+        subject = `Your ${BRAND_NAME} OTP`;
+        purpose = "Verification";
+        message = "Please use the OTP below to complete your verification.";
     }
 
-    static async sendOtpMail(email, name, otp, otpType) {
-        console.log(`[emailService] sendOtpMail called — email: ${email}, otpType: ${otpType}, otp: ${otp}`);
-
-        let subject, purpose, message;
-
-        switch (otpType) {
-            case "register":
-                subject = `Verify Your ${BRAND_NAME} Account`;
-                purpose = "Account Registration";
-                message = `Thank you for registering with ${BRAND_NAME}! Please use the OTP below to verify your account.`;
-                break;
-            case "forgotPassword":
-                subject = `Reset Your ${BRAND_NAME} Password`;
-                purpose = "Password Reset";
-                message = "We received a request to reset your password. Please use the OTP below to proceed.";
-                break;
-            case "changePassword":
-            case "ChangePassword":
-                subject = "Verify Password Change Request";
-                purpose = "Password Change";
-                message = "We received a request to change your password. Please use the OTP below to verify this change.";
-                break;
-            default:
-                subject = `Your ${BRAND_NAME} OTP`;
-                purpose = "Verification";
-                message = "Please use the OTP below to complete your verification.";
-        }
-
-        const htmlContent = `
+    const htmlContent = `
       ${emailOpen("Secure Verification")}
       <h2>Hello ${name || "User"},</h2>
       <p>${message}</p>
@@ -308,15 +308,234 @@ class emailService {
       ${emailClose()}
     `;
 
-        try {
-            const messageId = await this.sendMail(email, subject, htmlContent);
-            console.log(`[emailService] sendOtpMail completed — messageId: ${messageId}`);
-            return messageId;
-        } catch (error) {
-            console.error(`[emailService] sendOtpMail FAILED for ${email}:`, error.message);
-            throw error;
-        }
+    try {
+      const messageId = await this.sendMail(email, subject, htmlContent);
+      console.log(`[emailService] sendOtpMail completed — messageId: ${messageId}`);
+      return messageId;
+    } catch (error) {
+      console.error(`[emailService] sendOtpMail FAILED for ${email}:`, error.message);
+      throw error;
     }
+  }
+
+
+
+  static async sendPopupLeadMail(lead, recipients) {
+    const escapeHtml = (str) =>
+      String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const subject = `New Lead Inquiry — ${lead.name}`;
+
+    const htmlContent = `
+    ${emailOpen("New Lead Inquiry")}
+
+    <h2>New Lead Inquiry</h2>
+
+    <p>
+      A new customer inquiry has been received through the website.
+      Please review the lead details below and follow up at your earliest convenience.
+    </p>
+
+    <div class="info-box">
+      <div class="detail-row">
+        <div class="detail-label">Name</div>
+        <div class="detail-value">${escapeHtml(lead.name)}</div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-label">Phone</div>
+        <div class="detail-value">
+          ${escapeHtml(lead.countryCode || "")} ${escapeHtml(lead.phone)}
+        </div>
+      </div>
+    </div>
+
+    ${lead.details
+        ? `
+    <div class="response-box">
+      <div class="resp-by">Inquiry Details</div>
+      <p>${escapeHtml(lead.details)}</p>
+    </div>
+    `
+        : ""
+      }
+
+    <p style="margin-top:24px;">
+      Kindly review this inquiry and contact the customer as soon as possible.
+    </p>
+
+    ${emailClose()}
+  `;
+
+    const results = [];
+
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return results;
+    }
+
+    for (const recipient of recipients) {
+      try {
+        const messageId = await this.sendMail(recipient, subject, htmlContent);
+
+        results.push({
+          email: recipient,
+          success: true,
+          messageId,
+        });
+      } catch (error) {
+        results.push({
+          email: recipient,
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  static async sendContactSectionLeadMail(lead, recipients) {
+    console.log(`[emailService] sendContactSectionLeadMail called — leadId: ${lead.id}`);
+    console.log(`[emailService] Recipients: ${JSON.stringify(recipients)}`);
+
+    const escapeHtml = (str) =>
+      String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const subject = `New Contact Lead — ${lead.name}`;
+
+    const htmlContent = `
+      ${emailOpen("New Contact Lead")}
+      <h2>New Lead from Contact Section</h2>
+      <p>A new contact form submission has come in. Details below:</p>
+
+      <div class="info-box">
+        <div class="detail-row">
+          <div class="detail-label">Name</div>
+          <div class="detail-value">${escapeHtml(lead.name)}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Phone</div>
+          <div class="detail-value">${escapeHtml(lead.countryCode || "")} ${escapeHtml(lead.phone)}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Email</div>
+          <div class="detail-value">${escapeHtml(lead.email) || "—"}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Company</div>
+          <div class="detail-value">${escapeHtml(lead.company) || "—"}</div>
+        </div>
+     
+      </div>
+
+      ${lead.details ? `
+      <div class="response-box">
+        <div class="resp-by">Message</div>
+        <p>${escapeHtml(lead.details)}</p>
+      </div>
+      ` : ""}
+
+      <p style="margin-top:24px;">Please follow up with this lead as soon as possible.</p>
+      ${emailClose()}
+    `;
+
+    const results = [];
+
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      console.warn("[emailService] sendContactSectionLeadMail called with no recipients — nothing to send");
+      return results;
+    }
+
+    for (const recipient of recipients) {
+      try {
+        const messageId = await this.sendMail(recipient, subject, htmlContent);
+        console.log(`[emailService] ✅ Sent to ${recipient} — messageId: ${messageId}`);
+        results.push({ email: recipient, success: true, messageId });
+      } catch (error) {
+        console.error(`[emailService] ❌ FAILED to send to ${recipient}: ${error.message}`);
+        results.push({ email: recipient, success: false, error: error.message });
+      }
+    }
+
+    const sentCount = results.filter(r => r.success).length;
+    const failedCount = results.length - sentCount;
+
+    console.log(`[emailService] sendContactSectionLeadMail summary for lead ${lead.id}: ${sentCount} sent, ${failedCount} failed out of ${results.length} total`);
+    if (failedCount > 0) {
+      console.warn(
+        `[emailService] Failed recipients: ${results.filter(r => !r.success).map(r => r.email).join(", ")}`
+      );
+    }
+
+    return results;
+  }
+
+
+
+  static async sendAdminUserCreationMail(email, password, permissions, name) {
+    const escapeHtml = (str) =>
+      String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const subject = `Your ${BRAND_NAME} Admin Account Has Been Created`;
+
+    const permissionsList = Array.isArray(permissions) && permissions.length > 0
+      ? permissions.map((p) => `<li>${escapeHtml(p)}</li>`).join("")
+      : "<li>No permissions assigned</li>";
+
+    const htmlContent = `
+    ${emailOpen("Admin Account Created")}
+    <h2>Hello ${escapeHtml(name) || "Admin"},</h2>
+    <p>An admin account has been created for you on ${BRAND_NAME}. Below are your login credentials.</p>
+
+    <div class="info-box">
+      <div class="detail-row">
+        <div class="detail-label">Email</div>
+        <div class="detail-value">${escapeHtml(email)}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Password</div>
+        <div class="detail-value">${escapeHtml(password)}</div>
+      </div>
+    </div>
+
+    <p><strong>Assigned Permissions:</strong></p>
+    <ul class="tips">
+      ${permissionsList}
+    </ul>
+
+
+
+    <p>Need help? Contact us at
+      <a href="mailto:${SUPPORT_EMAIL}" style="color:#00466a;">${SUPPORT_EMAIL}</a>
+    </p>
+
+    <p style="margin-top:24px;">Best regards,<br/><strong>The ${BRAND_NAME} Team</strong></p>
+    ${emailClose()}
+  `;
+
+    try {
+      const messageId = await this.sendMail(email, subject, htmlContent);
+      return messageId;
+    } catch (error) {
+      throw error;
+    }
+  }
+
 
 }
 export default emailService;

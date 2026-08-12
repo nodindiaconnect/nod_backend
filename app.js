@@ -8,7 +8,7 @@ import helmet from "helmet";
 import http from "http";
 import { connectToDatabase } from "./config/config.js";
 import { connectToPostgres } from "./config/postgres.js";
-
+import { sanitizeRequest } from "./middleware/sanitize.js";
 dotenv.config();
 
 const app = Express();
@@ -25,6 +25,9 @@ app.use(Express.urlencoded({ limit: "50mb", extended: true }));
 app.get("/", (req, res) => {
   res.json({ status: "working" });
 });
+
+// app.use(sanitizeRequest);
+
 
 // API routes
 app.use("/api", allRoutes);

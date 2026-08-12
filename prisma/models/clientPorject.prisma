@@ -1,3 +1,11 @@
+
+
+enum ProjectAvailabilityStatus {
+  OPEN
+  CLOSED
+}
+
+
 model Project {
   id String @id @default(uuid())
 
@@ -45,6 +53,8 @@ designStyle DesignStyle[]
   additionalNotes        String?
 
   status ProjectStatus @default(WAITING_FOR_QUOTATIONS)
+ availabilityStatus ProjectAvailabilityStatus @default(OPEN)
+
 
   attachments Attachment[]
   bids        Bid[]

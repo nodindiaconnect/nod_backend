@@ -4,11 +4,13 @@ model Otp {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  otpType    String // "register" | "forgotPassword" | "changePassword" | ...
+  otpType    String
   otp        Int
+  attempts   Int      @default(0)
   expireTime DateTime
 
   createdAt DateTime @default(now())
 
   @@index([userId, otpType])
+    @@index([expireTime])
 }

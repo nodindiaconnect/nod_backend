@@ -26,7 +26,7 @@ export const Auth = async (req, res, next) => {
         return helper.failed(res, "Invalid Token");
       }
 
-      console.log("tokenNotExpired")
+      console.log(decode.id,"tokenNotExpired")
 
       const findUser = await prisma.user.findUnique({
         where: { id: decode.id },
@@ -55,7 +55,7 @@ export const Auth = async (req, res, next) => {
 
       console.log(findUser, "findUserq1w2e34")
 
-      if (findUser.role === 0) {
+      if (findUser.role === 0 || findUser.role === 7) {
         req.admin = findUser;
       } else if ([1, 2, 3, 4, 5].includes(findUser.role)) {
         req.user = findUser;
@@ -73,6 +73,7 @@ export const Auth = async (req, res, next) => {
 
 
 export const verifyAdmin = async (req, res, next) => {
+  console.log(req.admin,"req.admin")
   try {
     if (!req.admin) {
       return helper.failed(res, "You Are Not Authorised", {}, 401);
