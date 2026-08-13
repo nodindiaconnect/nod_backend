@@ -1,8 +1,6 @@
-
-
-
 import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
+import sanitizeData from "../utils/sanitizeHtml.js";
 
 import pkg from "@prisma/client";
 const { Prisma } = pkg;
@@ -49,6 +47,39 @@ const ENUMS = {
     attachmentType: ["FLOOR_PLAN", "PROPERTY_PHOTO", "REFERENCE_IMAGE", "VIDEO"],
 };
 
+// Free-text fields on the project body that need HTML stripped before
+// validation/storage. Enums (category, servicesRequired, propertyStatus,
+// designStyle, spaceRequirements, clientInvolvement, priority,
+// preferredCommunication) are checked against a fixed whitelist in
+// validateEnum() below, so sanitizing them is unnecessary. Numbers,
+// booleans and dates are coerced/typed separately, and the *Urls
+// arrays are filtered to strings before being turned into attachment
+// records, so none of those need sanitizing here either.
+const FREE_TEXT_FIELDS = [
+    "title",
+    "description",
+    "address",
+    "city",
+    "state",
+    "pincode",
+    "accessibilityNeeds",
+    "spaceUsers",
+    "currentSpaceLikes",
+    "currentSpaceProblems",
+    "preferredWorkingHours",
+    "additionalNotes",
+    "colorPreferences",
+];
+
+function sanitizeProjectBody(body) {
+    FREE_TEXT_FIELDS.forEach((field) => {
+        if (typeof body[field] === "string") {
+            body[field] = sanitizeData(body[field]);
+        }
+    });
+    return body;
+}
+
 function validateEnum(value, allowed, fieldName, errors) {
     if (value === undefined || value === null) return;
     const values = Array.isArray(value) ? value : [value];
@@ -94,6 +125,98 @@ function validateLength(value, fieldName, errors) {
 
 const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const COLOR_NAME_RE = /^[a-zA-Z][a-zA-Z\s-]{1,29}$/;
+
+// ---- File upload restrictions (per attachment type) ----
+// Applied to the *URLs* the client sends after uploading to Supabase
+// Storage — we can't check bytes here, but we CAN cap how many files
+// per type are allowed, and reject URLs whose extension isn't in the
+// allowed list for that type (belt-and-braces alongside whatever
+// bucket-level restrictions Supabase itself enforces on upload).
+const FILE_RULES = {
+    FLOOR_PLAN: {
+        maxCount: 5,
+        maxSizeMB: 10,
+        allowedExt: ["jpg", "jpeg", "png", "pdf", "webp"],
+    },
+    PROPERTY_PHOTO: {
+        maxCount: 15,
+        maxSizeMB: 8,
+        allowedExt: ["jpg", "jpeg", "png", "webp"],
+    },
+    REFERENCE_IMAGE: {
+        maxCount: 15,
+        maxSizeMB: 8,
+        allowedExt: ["jpg", "jpeg", "png", "webp"],
+    },
+    VIDEO: {
+        maxCount: 3,
+        maxSizeMB: 100,
+        allowedExt: ["mp4", "mov", "webm"],
+    },
+};
+
+function getExtension(url) {
+    const clean = url.split("?")[0].split("#")[0];
+    const match = clean.match(/\.([a-zA-Z0-9]+)$/);
+    return match ? match[1].toLowerCase() : "";
+}
+
+/**
+ * Validates the *Urls arrays against FILE_RULES: count per type,
+ * extension whitelist per type, and (if the client sends matching
+ * *Sizes arrays, in bytes) size per file. Sizes are optional since
+ * the URL alone doesn't carry byte size — if the frontend has it
+ * (from the upload response) it should send it as e.g.
+ * floorPlanSizes: [123456, 98765], same order as floorPlanUrls.
+ */
+function validateFileUploads(body, errors) {
+    const FILE_FIELDS = [
+        { urlField: "floorPlanUrls", sizeField: "floorPlanSizes", type: "FLOOR_PLAN" },
+        { urlField: "propertyPhotoUrls", sizeField: "propertyPhotoSizes", type: "PROPERTY_PHOTO" },
+        { urlField: "referenceImageUrls", sizeField: "referenceImageSizes", type: "REFERENCE_IMAGE" },
+        { urlField: "videoUrls", sizeField: "videoSizes", type: "VIDEO" },
+    ];
+
+    FILE_FIELDS.forEach(({ urlField, sizeField, type }) => {
+        const urls = body[urlField];
+        if (!Array.isArray(urls) || urls.length === 0) return;
+
+        const rules = FILE_RULES[type];
+        const validUrls = urls.filter((u) => typeof u === "string" && u.trim() !== "");
+
+        if (validUrls.length > rules.maxCount) {
+            errors.push({
+                field: urlField,
+                message: `${type.replace(/_/g, " ")}: maximum ${rules.maxCount} files allowed (got ${validUrls.length}).`,
+            });
+        }
+
+        validUrls.forEach((url, idx) => {
+            const ext = getExtension(url);
+            if (!rules.allowedExt.includes(ext)) {
+                errors.push({
+                    field: urlField,
+                    message: `${type.replace(/_/g, " ")}: file ${idx + 1} has an unsupported type (.${ext || "unknown"}). Allowed: ${rules.allowedExt.join(", ")}.`,
+                });
+            }
+        });
+
+        const sizes = body[sizeField];
+        if (Array.isArray(sizes)) {
+            sizes.forEach((sizeBytes, idx) => {
+                const num = Number(sizeBytes);
+                if (Number.isNaN(num)) return;
+                const maxBytes = rules.maxSizeMB * 1024 * 1024;
+                if (num > maxBytes) {
+                    errors.push({
+                        field: urlField,
+                        message: `${type.replace(/_/g, " ")}: file ${idx + 1} exceeds the ${rules.maxSizeMB}MB size limit.`,
+                    });
+                }
+            });
+        }
+    });
+}
 
 function validateColorPreferences(value, errors) {
     if (!value) return;
@@ -228,7 +351,10 @@ class ClientController {
 
     static async createProject(req, res) {
         try {
-            const body = req.body;
+            // SANITIZED: strip HTML from every free-text field on the body
+            // before any validation runs, so length checks below apply to
+            // the cleaned value (same pattern as authController).
+            const body = sanitizeProjectBody(req.body);
             const errors = [];
 
             const required = [
@@ -313,9 +439,32 @@ class ClientController {
                 errors.push({ field: "budgetMin", message: "budgetMin cannot be greater than budgetMax" });
             }
 
-            if (new Date(body.startDate) > new Date(body.completionDate)) {
+            // ---- Date validation (server-side, never trust client "today") ----
+            const startDate = new Date(body.startDate);
+            const completionDate = new Date(body.completionDate);
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+
+            if (Number.isNaN(startDate.getTime())) {
+                errors.push({ field: "startDate", message: "startDate is not a valid date" });
+            } else if (startDate < todayStart) {
+                errors.push({ field: "startDate", message: "startDate cannot be in the past" });
+            }
+
+            if (Number.isNaN(completionDate.getTime())) {
+                errors.push({ field: "completionDate", message: "completionDate is not a valid date" });
+            }
+
+            if (
+                !Number.isNaN(startDate.getTime()) &&
+                !Number.isNaN(completionDate.getTime()) &&
+                startDate > completionDate
+            ) {
                 errors.push({ field: "startDate", message: "startDate cannot be after completionDate" });
             }
+
+            // ---- File upload restrictions (count / type / size) ----
+            validateFileUploads(body, errors);
 
             if (errors.length) {
                 return res.status(400).json({
@@ -554,5 +703,3 @@ class ClientController {
 }
 
 export default ClientController;
-
-

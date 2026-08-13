@@ -26,7 +26,7 @@ app.get("/", (req, res) => {
   res.json({ status: "working" });
 });
 
-// app.use(sanitizeRequest);
+app.use(sanitizeRequest);
 
 
 // API routes
