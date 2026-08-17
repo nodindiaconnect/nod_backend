@@ -1,69 +1,66 @@
 model Product {
-  id                    String   @id @default(uuid())
-  supplier              User     @relation(fields: [supplierId], references: [id])
-  supplierId            String
+  id         String @id @default(uuid())
+  supplier   User   @relation(fields: [supplierId], references: [id])
+  supplierId String
 
-  sku                   String?  @unique
-  productName           String
-  category              String
-  subCategory           String?
-  brand                 String?
-  description           String?
-  specifications         String?
+  sku            String? @unique
+  productName    String
+  category       String
+  subCategory    String?
+  brand          String?
+  description    String?
+  specifications String?
 
-  unit                  String   // Piece, Box, Kg, Sqft, Meter
-  price                 Float
-  discountPrice         Float?
-  stock                 Int      @default(0)
-  minimumOrderQuantity  Int      @default(1)
+  unit                 String // Piece, Box, Kg, Sqft, Meter
+  price                Float
+  discountPrice        Float?
+  stock                Int    @default(0)
+  minimumOrderQuantity Int    @default(1)
 
-  images                String[]
-  thumbnail             String?
+  images    String[]
+  thumbnail String?
 
-  material              String?
-  color                 String?
+  material String?
+  color    String?
 
-  length                Float?
-  width                 Float?
-  height                Float?
-  weight                Float?
+  length Float?
+  width  Float?
+  height Float?
+  weight Float?
 
-  warranty              String?
-  deliveryTime          String?
+  warranty     String?
+  deliveryTime String?
 
-  availability          String   @default("In Stock") // In Stock, Out of Stock
-  status                String   @default("Active")   // Active, Inactive
+  availability String @default("In Stock") // In Stock, Out of Stock
+  status       String @default("Active") // Active, Inactive
 
-  createdBy             String
-  updatedBy             String
+  createdBy String
+  updatedBy String
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
-
-
 
 model ContactDetails {
-  id              String   @id @default(uuid())
-  supplier        User     @relation(fields: [supplierId], references: [id])
-  supplierId      String   @unique   // enforces ONE contact detail per supplier
+  id         String @id @default(uuid())
+  supplier   User   @relation(fields: [supplierId], references: [id])
+  supplierId String @unique // enforces ONE contact detail per supplier
 
-  shopName        String
-  address         String
-  pincode         String
-  state           String
-  city            String
-  country         String   @default("India")
+  shopName String
+  address  String
+  pincode  String
+  state    String
+  city     String
+  country  String @default("India")
 
-  latitude        Float?
-  longitude        Float?
-  mapAddress      String?  // formatted address from map picker
+  latitude   Float?
+  longitude  Float?
+  mapAddress String? // formatted address from map picker
 
-  whatsappNumber  String
-  callNumber      String
-  email           String
+  whatsappNumber String
+  callNumber     String
+  email          String
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
-

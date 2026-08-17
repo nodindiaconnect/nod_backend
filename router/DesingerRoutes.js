@@ -8,6 +8,9 @@ let router = Router();
 
 router.get("/me/userDetails", Auth, DesignerController.getUserDetails);
 
+router.get("/me/profile", Auth, DesignerController.getMyProfile);
+router.patch("/me/profile", Auth, DesignerController.editMyProfile);
+
 router.get("/me/quotations", Auth, DesignerController.getQuotations)
 router.post("/quotations", Auth, DesignerController.sendQuotation)
 router.patch("/quotations/:bidId/withdraw", Auth, DesignerController.withdrawQuotation)

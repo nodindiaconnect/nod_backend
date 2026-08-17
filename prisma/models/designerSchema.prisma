@@ -1,46 +1,29 @@
 model Designer {
-  id String @id @default(uuid())
-
-  user   User   @relation(fields: [userId], references: [id])
+  id     String @id @default(uuid())
   userId String @unique
 
-  bio               String?
-  yearsOfExperience Int
-  experienceLevel   ExperienceLevel
-  designStyles      String // JSON string
-  specializations   String // JSON string
+  bio String?
 
-  certifications     String // JSON string
-  portfolioLinks     String // JSON string
-  verificationStatus VerificationStatus @default(PENDING)
-  govtIdNumber       String?
+  yearsOfExperience Int?
 
-  serviceCities    String // JSON string
-  minBudgetHandled Float
-  maxBudgetHandled Float
-  availability     AvailabilityStatus @default(AVAILABLE)
+  experienceLevel ExperienceLevel?
+  availability    Availability?
 
-  rating       Float @default(0)
-  totalReviews Int   @default(0)
+  certifications  String[] @default([])
+  designStyles    String[] @default([])
+  specializations String[] @default([])
+  serviceCities   String[] @default([])
 
-  totalQuotationsSent Int @default(0)
-  quotationsPending   Int @default(0)
-  quotationsAccepted  Int @default(0)
-  quotationsRejected  Int @default(0)
+  minBudgetHandled Float?
+  maxBudgetHandled Float?
 
-  totalProjectsHandled Int @default(0)
-  projectsInProgress   Int @default(0)
-  projectsCompleted    Int @default(0)
+  photos         String[] @default([])
+  portfolioLinks String[] @default([])
+verificationStatus VerificationStatus @default(PENDING)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   bids Bid[]
 
-  isDeleted Boolean   @default(false)
-  deletedAt DateTime?
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([verificationStatus])
-  @@index([availability])
 }

@@ -1,10 +1,7 @@
-
-
 enum ProjectAvailabilityStatus {
   OPEN
   CLOSED
 }
-
 
 model Project {
   id String @id @default(uuid())
@@ -14,7 +11,7 @@ model Project {
 
   title            String
   category         ProjectCategory
-servicesRequired ServiceType[]
+  servicesRequired ServiceType[]
   description      String
 
   address           String
@@ -27,9 +24,9 @@ servicesRequired ServiceType[]
   numberOfBathrooms Int?
   propertyStatus    PropertyStatus
 
-designStyle DesignStyle[]
+  designStyle          DesignStyle[]
   colorPreferences     String?
-  spaceRequirements SpaceRequirement[]
+  spaceRequirements    SpaceRequirement[]
   accessibilityNeeds   String?
   spaceUsers           String?
   currentSpaceLikes    String?
@@ -52,9 +49,8 @@ designStyle DesignStyle[]
   preferredWorkingHours  String?
   additionalNotes        String?
 
-  status ProjectStatus @default(WAITING_FOR_QUOTATIONS)
- availabilityStatus ProjectAvailabilityStatus @default(OPEN)
-
+  status             ProjectStatus             @default(WAITING_FOR_QUOTATIONS)
+  availabilityStatus ProjectAvailabilityStatus @default(OPEN)
 
   attachments Attachment[]
   bids        Bid[]

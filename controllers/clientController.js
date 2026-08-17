@@ -136,17 +136,32 @@ const FILE_RULES = {
     FLOOR_PLAN: {
         maxCount: 5,
         maxSizeMB: 10,
-        allowedExt: ["jpg", "jpeg", "png", "pdf", "webp"],
+        allowedExt: ["jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif","pdf"],
     },
     PROPERTY_PHOTO: {
         maxCount: 15,
         maxSizeMB: 8,
-        allowedExt: ["jpg", "jpeg", "png", "webp"],
+        allowedExt: ["jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif",],
     },
     REFERENCE_IMAGE: {
         maxCount: 15,
         maxSizeMB: 8,
-        allowedExt: ["jpg", "jpeg", "png", "webp"],
+        allowedExt: ["jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif",],
     },
     VIDEO: {
         maxCount: 3,
@@ -648,6 +663,186 @@ class ClientController {
         }
     }
 
+
+    static async updateProject(req, res) {
+        try {
+            const { projectId } = req.params;
+
+            const existing = await prisma.project.findUnique({
+                where: { id: projectId },
+                include: { attachments: true },
+            });
+
+            if (!existing) {
+                return res.status(404).json({ success: false, message: "Project not found" });
+            }
+
+            if (existing.clientId !== req.user.id) {
+                return res.status(403).json({ success: false, message: "You are not allowed to edit this project" });
+            }
+
+            if (!["WAITING_FOR_QUOTATIONS", "PROPOSALS_RECEIVED"].includes(existing.status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "This project can no longer be edited",
+                });
+            }
+
+            const body = sanitizeProjectBody(req.body);
+            const errors = [];
+
+            Object.keys(LENGTH_LIMITS).forEach((field) => {
+                if (field === "colorPreferences") return;
+                if (body[field] !== undefined) validateLength(body[field], field, errors);
+            });
+
+            if (body.category !== undefined) validateEnum(body.category, ENUMS.category, "category", errors);
+            if (body.servicesRequired !== undefined) validateEnum(body.servicesRequired, ENUMS.servicesRequired, "servicesRequired", errors);
+            if (body.propertyStatus !== undefined) validateEnum(body.propertyStatus, ENUMS.propertyStatus, "propertyStatus", errors);
+            if (body.designStyle !== undefined) validateEnum(body.designStyle, ENUMS.designStyle, "designStyle", errors);
+            if (body.spaceRequirements !== undefined) validateEnum(body.spaceRequirements, ENUMS.spaceRequirements, "spaceRequirements", errors);
+            if (body.clientInvolvement !== undefined) validateEnum(body.clientInvolvement, ENUMS.clientInvolvement, "clientInvolvement", errors);
+            if (body.priority !== undefined) validateEnum(body.priority, ENUMS.priority, "priority", errors);
+            if (body.preferredCommunication !== undefined) validateEnum(body.preferredCommunication, ENUMS.preferredCommunication, "preferredCommunication", errors);
+
+            if (body.colorPreferences !== undefined) {
+                validateColorPreferences(body.colorPreferences, errors);
+                validateLength(body.colorPreferences, "colorPreferences", errors);
+            }
+
+            const nextPropertyStatus = body.propertyStatus ?? existing.propertyStatus;
+            if (
+                nextPropertyStatus === "NEW_CONSTRUCTION" &&
+                (body.currentSpaceLikes || body.currentSpaceProblems || existing.currentSpaceLikes || existing.currentSpaceProblems)
+            ) {
+                errors.push({
+                    field: "propertyStatus",
+                    message: "currentSpaceLikes/currentSpaceProblems are not applicable for NEW_CONSTRUCTION",
+                });
+            }
+
+            const nextBudgetMin = body.budgetMin !== undefined ? Number(body.budgetMin) : Number(existing.budgetMin);
+            const nextBudgetMax = body.budgetMax !== undefined ? Number(body.budgetMax) : Number(existing.budgetMax);
+            if (nextBudgetMin > nextBudgetMax) {
+                errors.push({ field: "budgetMin", message: "budgetMin cannot be greater than budgetMax" });
+            }
+
+            let startDate = existing.startDate;
+            let completionDate = existing.completionDate;
+
+            if (body.startDate !== undefined) {
+                startDate = new Date(body.startDate);
+                const todayStart = new Date();
+                todayStart.setHours(0, 0, 0, 0);
+                if (Number.isNaN(startDate.getTime())) {
+                    errors.push({ field: "startDate", message: "startDate is not a valid date" });
+                } else if (startDate < todayStart) {
+                    errors.push({ field: "startDate", message: "startDate cannot be in the past" });
+                }
+            }
+
+            if (body.completionDate !== undefined) {
+                completionDate = new Date(body.completionDate);
+                if (Number.isNaN(completionDate.getTime())) {
+                    errors.push({ field: "completionDate", message: "completionDate is not a valid date" });
+                }
+            }
+
+            if (
+                !Number.isNaN(new Date(startDate).getTime()) &&
+                !Number.isNaN(new Date(completionDate).getTime()) &&
+                new Date(startDate) > new Date(completionDate)
+            ) {
+                errors.push({ field: "startDate", message: "startDate cannot be after completionDate" });
+            }
+
+            validateFileUploads(body, errors);
+
+            if (errors.length) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please fix the highlighted fields and try again.",
+                    errors: errors.map((e) => e.message),
+                    fieldErrors: errors,
+                });
+            }
+
+            const FILE_URL_FIELDS = [
+                { field: "floorPlanUrls", type: "FLOOR_PLAN" },
+                { field: "propertyPhotoUrls", type: "PROPERTY_PHOTO" },
+                { field: "referenceImageUrls", type: "REFERENCE_IMAGE" },
+                { field: "videoUrls", type: "VIDEO" },
+            ];
+
+            // A type's attachments are only touched if the client sent a *Urls
+            // array for it (including [] to mean "remove all of this type").
+            const typesToReplace = FILE_URL_FIELDS.filter(({ field }) => Array.isArray(body[field])).map((f) => f.type);
+
+            const newAttachmentData = FILE_URL_FIELDS.flatMap(({ field, type }) => {
+                const urls = body[field];
+                if (!Array.isArray(urls)) return [];
+                return urls.filter((u) => typeof u === "string" && u.trim() !== "").map((url) => ({ type, url }));
+            });
+
+            const data = {};
+            if (body.title !== undefined) data.title = body.title;
+            if (body.category !== undefined) data.category = body.category;
+            if (body.servicesRequired !== undefined) {
+                data.servicesRequired = Array.isArray(body.servicesRequired) ? body.servicesRequired : [body.servicesRequired];
+            }
+            if (body.description !== undefined) data.description = body.description;
+            if (body.address !== undefined) data.address = body.address;
+            if (body.city !== undefined) data.city = body.city;
+            if (body.state !== undefined) data.state = body.state;
+            if (body.pincode !== undefined) data.pincode = body.pincode;
+            if (body.propertySize !== undefined) data.propertySize = Number(body.propertySize);
+            if (body.numberOfFloors !== undefined) data.numberOfFloors = body.numberOfFloors ? Number(body.numberOfFloors) : null;
+            if (body.numberOfBedrooms !== undefined) data.numberOfBedrooms = body.numberOfBedrooms ? Number(body.numberOfBedrooms) : null;
+            if (body.numberOfBathrooms !== undefined) data.numberOfBathrooms = body.numberOfBathrooms ? Number(body.numberOfBathrooms) : null;
+            if (body.propertyStatus !== undefined) data.propertyStatus = body.propertyStatus;
+            if (body.designStyle !== undefined) {
+                data.designStyle = Array.isArray(body.designStyle) ? body.designStyle : [body.designStyle];
+            }
+            if (body.colorPreferences !== undefined) data.colorPreferences = body.colorPreferences || null;
+            if (body.spaceRequirements !== undefined) {
+                data.spaceRequirements = Array.isArray(body.spaceRequirements) ? body.spaceRequirements : [body.spaceRequirements];
+            }
+            if (body.accessibilityNeeds !== undefined) data.accessibilityNeeds = body.accessibilityNeeds || null;
+            if (body.spaceUsers !== undefined) data.spaceUsers = body.spaceUsers || null;
+            if (body.currentSpaceLikes !== undefined) data.currentSpaceLikes = body.currentSpaceLikes || null;
+            if (body.currentSpaceProblems !== undefined) data.currentSpaceProblems = body.currentSpaceProblems || null;
+            if (body.clientInvolvement !== undefined) data.clientInvolvement = body.clientInvolvement || null;
+            if (body.budgetMin !== undefined) data.budgetMin = new Prisma.Decimal(body.budgetMin);
+            if (body.budgetMax !== undefined) data.budgetMax = new Prisma.Decimal(body.budgetMax);
+            if (body.startDate !== undefined) data.startDate = new Date(body.startDate);
+            if (body.completionDate !== undefined) data.completionDate = new Date(body.completionDate);
+            if (body.priority !== undefined) data.priority = body.priority || "NORMAL";
+            if (body.siteVisitRequired !== undefined) {
+                data.siteVisitRequired = body.siteVisitRequired === "true" || body.siteVisitRequired === true;
+            }
+            if (body.preferredCommunication !== undefined) data.preferredCommunication = body.preferredCommunication || null;
+            if (body.preferredWorkingHours !== undefined) data.preferredWorkingHours = body.preferredWorkingHours || null;
+            if (body.additionalNotes !== undefined) data.additionalNotes = body.additionalNotes || null;
+
+            if (typesToReplace.length) {
+                data.attachments = {
+                    deleteMany: { type: { in: typesToReplace } },
+                    create: newAttachmentData,
+                };
+            }
+
+            const updatedProject = await prisma.project.update({
+                where: { id: projectId },
+                data,
+                include: { attachments: true },
+            });
+
+            return res.status(200).json({ success: true, message: "Project updated successfully", data: updatedProject });
+        } catch (err) {
+            console.error("updateProject error:", err);
+            return res.status(500).json({ success: false, message: "Failed to update project", error: err.message });
+        }
+    }
 
 
 

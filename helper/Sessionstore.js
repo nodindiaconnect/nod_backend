@@ -49,7 +49,7 @@ const sessionStore = {
     if (!session || session.type !== type) return null;
 
     if (session.expireAt < new Date()) {
-      await prisma.authSession.delete({ where: { id: session.id } }).catch(() => {});
+      await prisma.authSession.delete({ where: { id: session.id } }).catch(() => { });
       return null;
     }
 
@@ -61,7 +61,7 @@ const sessionStore = {
   },
 
   async destroy(id) {
-    return prisma.authSession.delete({ where: { id } }).catch(() => {});
+    return prisma.authSession.delete({ where: { id } }).catch(() => { });
   },
 
   async bumpAttempts(id) {
@@ -76,7 +76,7 @@ const sessionStore = {
     await Promise.all([
       prisma.authSession.deleteMany({ where: { expireAt: { lt: now } } }),
       prisma.otp.deleteMany({ where: { expireTime: { lt: now } } }),
-    ]).catch(() => {});
+    ]).catch(() => { });
   },
 };
 

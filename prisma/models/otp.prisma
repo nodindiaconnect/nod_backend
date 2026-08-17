@@ -12,5 +12,5 @@ model Otp {
   createdAt DateTime @default(now())
 
   @@index([userId, otpType])
-    @@index([expireTime])
+  @@index([expireTime])
 }

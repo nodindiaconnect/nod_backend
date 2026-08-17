@@ -18,10 +18,9 @@ model Architect {
   serviceCities    String // JSON string
   minBudgetHandled Float
   maxBudgetHandled Float
-  availability     AvailabilityStatus @default(AVAILABLE)
-
-  rating       Float @default(0)
-  totalReviews Int   @default(0)
+  availability     Availability @default(AVAILABLE)
+  rating           Float        @default(0)
+  totalReviews     Int          @default(0)
 
   totalQuotationsSent Int @default(0)
   quotationsPending   Int @default(0)

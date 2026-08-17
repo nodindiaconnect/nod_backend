@@ -234,80 +234,281 @@ const ACCOUNT_TYPE_NAMES = Object.fromEntries(
 class authController {
   // ── REGISTER · STEP 1: start (identity + profile in one call, since
   // that's what the current UI collects together) ────────────────────
+  // static async registerStart(req, res) {
+  //   try {
+  //     let { name, username, phone, countryCode, email, password, role, captchaToken } = req.body;
+
+  //     // SANITIZED: name is free text (user-typed display name) —
+  //     // strip HTML before validation/storage. password/captchaToken/
+  //     // username/phone/email are intentionally left untouched (they
+  //     // are validated by strict regex/format checks below, and
+  //     // sanitizing password would corrupt the hash).
+  //     name = sanitizeData(name);
+
+  //     console.log(name, "nameqwer4")
+
+  //     // SECURITY: captcha gate — bot signup protection.
+  //     const captchaOk = await verifyTurnstile(captchaToken, req.ip);
+  //     if (!captchaOk) return helper.failed(res, CAPTCHA_FAIL_MESSAGE);
+
+  //     if (!isValidEmail(email)) return helper.failed(res, "Please enter a valid email address.");
+  //     if (!isValidPhone(phone)) return helper.failed(res, "Please enter a valid 10-digit mobile number.");
+  //     if (!isValidName(name)) return helper.failed(res, "Please enter a valid name (2-50 characters).");
+  //     if (!isValidUsername(username)) {
+  //       return helper.failed(res, "Username must be 3-30 characters, using only letters, numbers, underscores and dots.");
+  //     }
+  //     if (!isValidPassword(password)) {
+  //       return helper.failed(res, "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.");
+  //     }
+
+  //     // SECURITY: role is never trusted as-is. It must be an exact key
+  //     // in ACCOUNT_TYPES — anything else (typos, numbers, "admin") is
+  //     // rejected outright.
+  //     const normalizedRole = ACCOUNT_TYPES[role];
+  //     if (!normalizedRole) {
+  //       return helper.failed(res, "Invalid account type.");
+  //     }
+
+  //     email = email.toLowerCase();
+
+  //     const existing = await prisma.user.findFirst({ where: { email, isDeleted: false } });
+
+  //     // SECURITY: generic response regardless of whether the email is
+  //     // already registered — no "email already exists" leak.
+  //     if (existing && existing.isVerified) {
+  //       return helper.success(res, GENERIC_REGISTER_MESSAGE, { email });
+  //     }
+
+  //     const existingUsername = await prisma.user.findFirst({
+  //       where: { username, isDeleted: false, NOT: existing ? { id: existing.id } : undefined },
+  //     });
+  //     if (existingUsername) {
+  //       return helper.failed(res, "Username already taken");
+  //     }
+
+  //     const hashedPassword = await bcrypt.hash(password, 10);
+
+  //     let user;
+  //     if (!existing) {
+  //       user = await prisma.user.create({
+  //         data: {
+  //           name, username, phone, email, countryCode,
+  //           password: hashedPassword, role: normalizedRole,
+  //           isVerified: false, isRegistered: false,
+  //         },
+  //       });
+  //     } else {
+  //       user = await prisma.user.update({
+  //         where: { id: existing.id },
+  //         data: { name, countryCode, username, phone, role: normalizedRole, password: hashedPassword },
+  //       });
+  //     }
+
+  //     const otp = await issueOtp(user.id, "register");
+  //     await emailService.sendOtpMail(email, name, otp, "register").catch(() => { });
+  //     // (pass the actual code through if your emailService signature needs it —
+  //     // kept out of the response either way)
+
+  //     const session = await sessionStore.create({
+  //       type: "register",
+  //       email,
+  //       userId: user.id,
+  //       ip: req.ip,
+  //       userAgent: req.headers["user-agent"],
+  //     });
+
+  //     return helper.success(res, GENERIC_REGISTER_MESSAGE, {
+  //       registerSessionToken: session.token,
+  //     });
+
+
+  //   } catch (error) {
+  //     console.error(error);
+  //     if (error.code === "P2002") return helper.failed(res, "This value is already in use.");
+  //     return helper.failed(res, GENERIC_SERVER_ERROR);
+  //   }
+  // }
+
   static async registerStart(req, res) {
     try {
-      let { name, username, phone, countryCode, email, password, role, captchaToken } = req.body;
+      let {
+        name,
+        username,
+        phone,
+        countryCode,
+        email,
+        password,
+        role,
+        captchaToken
+      } = req.body;
 
-      // SANITIZED: name is free text (user-typed display name) —
-      // strip HTML before validation/storage. password/captchaToken/
-      // username/phone/email are intentionally left untouched (they
-      // are validated by strict regex/format checks below, and
-      // sanitizing password would corrupt the hash).
+      console.log("========== REGISTER START ==========");
+      console.log("Registration request received");
+      console.log("Email:", email);
+      console.log("Username:", username);
+      console.log("Role:", role);
+      console.log("Country Code:", countryCode);
+
       name = sanitizeData(name);
 
-      console.log(name, "nameqwer4")
+      console.log("Sanitized name:", name);
 
-      // SECURITY: captcha gate — bot signup protection.
+      // SECURITY: captcha gate
       const captchaOk = await verifyTurnstile(captchaToken, req.ip);
-      if (!captchaOk) return helper.failed(res, CAPTCHA_FAIL_MESSAGE);
 
-      if (!isValidEmail(email)) return helper.failed(res, "Please enter a valid email address.");
-      if (!isValidPhone(phone)) return helper.failed(res, "Please enter a valid 10-digit mobile number.");
-      if (!isValidName(name)) return helper.failed(res, "Please enter a valid name (2-50 characters).");
+      console.log("Captcha verification:", captchaOk);
+
+      if (!captchaOk) {
+        console.log("Registration failed: CAPTCHA verification failed");
+        return helper.failed(res, CAPTCHA_FAIL_MESSAGE);
+      }
+
+      if (!isValidEmail(email)) {
+        console.log("Registration failed: Invalid email");
+        return helper.failed(res, "Please enter a valid email address.");
+      }
+
+      if (!isValidPhone(phone)) {
+        console.log("Registration failed: Invalid phone");
+        return helper.failed(res, "Please enter a valid 10-digit mobile number.");
+      }
+
+      if (!isValidName(name)) {
+        console.log("Registration failed: Invalid name");
+        return helper.failed(res, "Please enter a valid name (2-50 characters).");
+      }
+
       if (!isValidUsername(username)) {
-        return helper.failed(res, "Username must be 3-30 characters, using only letters, numbers, underscores and dots.");
-      }
-      if (!isValidPassword(password)) {
-        return helper.failed(res, "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.");
+        console.log("Registration failed: Invalid username");
+        return helper.failed(
+          res,
+          "Username must be 3-30 characters, using only letters, numbers, underscores and dots."
+        );
       }
 
-      // SECURITY: role is never trusted as-is. It must be an exact key
-      // in ACCOUNT_TYPES — anything else (typos, numbers, "admin") is
-      // rejected outright.
+      if (!isValidPassword(password)) {
+        console.log("Registration failed: Invalid password format");
+        return helper.failed(
+          res,
+          "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character."
+        );
+      }
+
       const normalizedRole = ACCOUNT_TYPES[role];
+
+      console.log("Normalized role:", normalizedRole);
+
       if (!normalizedRole) {
+        console.log("Registration failed: Invalid account type");
         return helper.failed(res, "Invalid account type.");
       }
 
       email = email.toLowerCase();
 
-      const existing = await prisma.user.findFirst({ where: { email, isDeleted: false } });
+      console.log("Checking existing user for email:", email);
 
-      // SECURITY: generic response regardless of whether the email is
-      // already registered — no "email already exists" leak.
+      const existing = await prisma.user.findFirst({
+        where: {
+          email,
+          // isDeleted: false
+        }
+      });
+
+      if (existing) {
+        console.log("Existing active user found");
+        console.log("Existing User ID:", existing.id);
+        console.log("Existing user verified:", existing.isVerified);
+        console.log("Existing user deleted:", existing.isDeleted);
+      } else {
+        console.log("No active user found for this email.");
+        console.log("If a deleted user exists, it will not be returned because isDeleted = false.");
+      }
+
+      // Existing verified account
       if (existing && existing.isVerified) {
+        console.log("Email already belongs to a verified account.");
+        console.log("Returning generic registration response.");
+
         return helper.success(res, GENERIC_REGISTER_MESSAGE, { email });
       }
 
+      console.log("Checking username availability:", username);
+
       const existingUsername = await prisma.user.findFirst({
-        where: { username, isDeleted: false, NOT: existing ? { id: existing.id } : undefined },
+        where: {
+          username,
+          isDeleted: false,
+          NOT: existing ? { id: existing.id } : undefined
+        }
       });
+
       if (existingUsername) {
+        console.log("Registration failed: Username already taken");
+        console.log("Existing username user ID:", existingUsername.id);
+
         return helper.failed(res, "Username already taken");
       }
+
+      console.log("Hashing password...");
 
       const hashedPassword = await bcrypt.hash(password, 10);
 
       let user;
+
       if (!existing) {
+        console.log("Creating new user...");
+
         user = await prisma.user.create({
           data: {
-            name, username, phone, email, countryCode,
-            password: hashedPassword, role: normalizedRole,
-            isVerified: false, isRegistered: false,
+            name,
+            username,
+            phone,
+            email,
+            countryCode,
+            password: hashedPassword,
+            role: normalizedRole,
+            isVerified: false,
+            isRegistered: false,
           },
         });
+
+        console.log("New user created successfully.");
+        console.log("New User ID:", user.id);
       } else {
+        console.log("Existing unverified user found.");
+        console.log("Updating existing user:", existing.id);
+
         user = await prisma.user.update({
-          where: { id: existing.id },
-          data: { name, countryCode, username, phone, role: normalizedRole, password: hashedPassword },
+          where: {
+            id: existing.id
+          },
+          data: {
+            name,
+            countryCode,
+            username,
+            phone,
+            role: normalizedRole,
+            password: hashedPassword
+          },
         });
+
+        console.log("Existing user updated successfully.");
+        console.log("Updated User ID:", user.id);
       }
 
+      console.log("Issuing registration OTP...");
+
       const otp = await issueOtp(user.id, "register");
-      await emailService.sendOtpMail(email, name, otp, "register").catch(() => { });
-      // (pass the actual code through if your emailService signature needs it —
-      // kept out of the response either way)
+
+      console.log("OTP generated successfully.");
+
+      await emailService
+        .sendOtpMail(email, name, otp, "register")
+        .catch((error) => {
+          console.error("Failed to send registration OTP email:", error);
+        });
+
+      console.log("Creating registration session...");
 
       const session = await sessionStore.create({
         type: "register",
@@ -317,17 +518,27 @@ class authController {
         userAgent: req.headers["user-agent"],
       });
 
+      console.log("Registration session created successfully.");
+      console.log("Registration completed successfully.");
+      console.log("========== REGISTER END ==========");
+
       return helper.success(res, GENERIC_REGISTER_MESSAGE, {
         registerSessionToken: session.token,
       });
 
-
     } catch (error) {
+      console.error("========== REGISTER ERROR ==========");
       console.error(error);
-      if (error.code === "P2002") return helper.failed(res, "This value is already in use.");
+
+      if (error.code === "P2002") {
+        console.log("Registration failed: Unique constraint violation");
+        return helper.failed(res, "This value is already in use.");
+      }
+
       return helper.failed(res, GENERIC_SERVER_ERROR);
     }
   }
+
 
   // ── REGISTER · STEP 2: verify OTP ("isVerify") — confirms email
   // ownership only. Does NOT create the wallet or issue a JWT yet. ────

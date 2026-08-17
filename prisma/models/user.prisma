@@ -1,13 +1,9 @@
-
-
-
-
 model RateLimit {
-  id          String   @id @default(uuid())
-  identifier  String
-  action      String
-  count       Int      @default(1)
-  windowStart DateTime
+  id           String    @id @default(uuid())
+  identifier   String
+  action       String
+  count        Int       @default(1)
+  windowStart  DateTime
   blockedUntil DateTime?
 
   createdAt DateTime @default(now())
@@ -20,9 +16,9 @@ model RateLimit {
 model AuthSession {
   id        String   @id @default(uuid())
   token     String   @unique
-  type      String   // "register" | "forgot"
-  step      String   // register: started -> verified -> profile_complete
-                      // forgot:   started -> verified
+  type      String // "register" | "forgot"
+  step      String // register: started -> verified -> profile_complete
+  // forgot:   started -> verified
   email     String
   userId    String?
   attempts  Int      @default(0)
@@ -34,8 +30,6 @@ model AuthSession {
   @@index([email])
   @@index([expireAt])
 }
-
-
 
 model User {
   id          String  @id @default(uuid())
@@ -54,10 +48,7 @@ model User {
   isDeleted    Boolean @default(false)
   forgotReq    Boolean @default(false)
 
-
   permissions String[] @default([])
-
-
 
   loginTime      DateTime?
   registeredDate DateTime?
@@ -71,26 +62,23 @@ model User {
 
   walletBalance Float @default(0)
 
-  otps     Otp[]
-  wallets  Wallet[]
-  projects Project[] // opposite side of Project.client relation
-products  Product[]
+  otps       Otp[]
+  wallets    Wallet[]
+  projects   Project[] // opposite side of Project.client relation
+  products   Product[]
   architect  Architect?
   contractor Contractor?
   designer   Designer?
 
-
-
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
+  specialization      String?
 
-
-    posts       Post[]
-  followers   Follow[] @relation("Following") // people who follow this user
-  following   Follow[] @relation("Follower")  // people this user follows
+  posts     Post[]
+  followers Follow[] @relation("Following") // people who follow this user
+  following Follow[] @relation("Follower") // people this user follows
 
   contactDetails ContactDetails?
-
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

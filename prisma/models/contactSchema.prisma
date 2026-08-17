@@ -1,4 +1,3 @@
-
 enum LeadSource {
   monsoon_makeover_popup
   contact_section
@@ -13,24 +12,24 @@ enum LeadStatus {
 }
 
 model ContactLead {
-  id          String     @id @default(uuid())
+  id String @id @default(uuid())
 
-  name        String     @db.VarChar(100)
-  email       String?    @db.VarChar(150)
-  countryCode String     @default("+91") @map("country_code") @db.VarChar(6)
-  phone       String     @db.VarChar(15)
-  pincode     String?    @db.VarChar(6)
-  company     String?    @db.VarChar(150)
-  details     String?    @db.Text
+  name        String  @db.VarChar(100)
+  email       String? @db.VarChar(150)
+  countryCode String  @default("+91") @map("country_code") @db.VarChar(6)
+  phone       String  @db.VarChar(15)
+  pincode     String? @db.VarChar(6)
+  company     String? @db.VarChar(150)
+  details     String? @db.Text
 
-  source      LeadSource @default(other)
-  status      LeadStatus @default(new)
+  source LeadSource @default(other)
+  status LeadStatus @default(new)
 
-  ip          String?    @db.VarChar(45)
-  userAgent   String?    @map("user_agent") @db.Text
+  ip        String? @db.VarChar(45)
+  userAgent String? @map("user_agent") @db.Text
 
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([createdAt])
   @@index([phone])

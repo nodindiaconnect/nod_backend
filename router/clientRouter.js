@@ -15,7 +15,7 @@ router.get("/clientprojects", Auth, ClientController.listProjects);
 router.get("/projects/:id", Auth, ClientController.getProjectById);
 
 router.get("/projectEnums", Auth, ClientController.getProjectEnums);
-
+router.put("/projects/:projectId", Auth, ClientController.updateProject);
 router.post("/projects/:projectId/availability-status", ClientController.updateProjectAvailability
 );
 

@@ -1,20 +1,20 @@
 enum ExperienceLevel {
-  ENTRY
-  MID
-  SENIOR
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
   EXPERT
+}
+
+enum Availability {
+  AVAILABLE
+  BUSY
+  UNAVAILABLE
 }
 
 enum VerificationStatus {
   PENDING
   VERIFIED
   REJECTED
-}
-
-enum AvailabilityStatus {
-  AVAILABLE
-  BUSY
-  ON_LEAVE
 }
 
 enum BidStatus {
