@@ -16,7 +16,10 @@ router.get("/projects/:id", Auth, ClientController.getProjectById);
 
 router.get("/projectEnums", Auth, ClientController.getProjectEnums);
 router.put("/projects/:projectId", Auth, ClientController.updateProject);
-router.post("/projects/:projectId/availability-status", ClientController.updateProjectAvailability
-);
+router.post("/projects/:projectId/availability-status", ClientController.updateProjectAvailability);
 
-export default router;
+router.get("/projects/:projectId/team", Auth, ClientController.getProjectTeam);
+router.patch("/projects/:projectId/status", Auth, ClientController.transitionProjectStatus);
+router.delete("/projects/:projectId/team/:memberId", Auth, ClientController.removeTeamMember);
+
+export default router;

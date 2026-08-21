@@ -19,8 +19,12 @@ model Designer {
 
   photos         String[] @default([])
   portfolioLinks String[] @default([])
-verificationStatus VerificationStatus @default(PENDING)
+  verificationStatus VerificationStatus @default(PENDING)
+  rating         Float    @default(0)
+  totalReviews   Int      @default(0)
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
 
   bids Bid[]
 

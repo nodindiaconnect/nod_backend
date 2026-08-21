@@ -51,16 +51,23 @@ model Project {
 
   status             ProjectStatus             @default(WAITING_FOR_QUOTATIONS)
   availabilityStatus ProjectAvailabilityStatus @default(OPEN)
+  biddingDeadline    DateTime?
 
   attachments Attachment[]
   bids        Bid[]
+  teamMembers ProjectTeam[]
+  chats       Chat[]
+  reviews     Review[]
 
   createdAt DateTime @default(now())
+
   updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([category])
   @@index([status])
+  @@index([availabilityStatus])
+  @@index([biddingDeadline])
 }
 
 model Attachment {

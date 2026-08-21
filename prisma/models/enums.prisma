@@ -19,8 +19,22 @@ enum VerificationStatus {
 
 enum BidStatus {
   PENDING
+  SHORTLISTED
   ACCEPTED
   REJECTED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum ChatType {
+  DIRECT
+  PROJECT_TEAM
+}
+
+enum TeamMemberStatus {
+  ACTIVE
+  REMOVED
+  COMPLETED
 }
 
 enum ProjectCategory {
@@ -87,8 +101,10 @@ enum AttachmentType {
 }
 
 enum ProjectStatus {
+  DRAFT
   WAITING_FOR_QUOTATIONS
   PROPOSALS_RECEIVED
+  SELECTED
   HIRED
   IN_PROGRESS
   COMPLETED

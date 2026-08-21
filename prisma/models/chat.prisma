@@ -1,0 +1,64 @@
+model Chat {
+  id String @id @default(uuid())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+
+  type  ChatType @default(DIRECT)
+  bid   Bid?     @relation(fields: [bidId], references: [id], onDelete: SetNull)
+  bidId String?
+
+  title String?
+
+  participants ChatParticipant[]
+  messages     Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([type])
+  @@index([bidId])
+}
+
+model ChatParticipant {
+  id String @id @default(uuid())
+
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chatId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  role       String?
+  lastReadAt DateTime?
+  joinedAt   DateTime  @default(now())
+
+  @@unique([chatId, userId])
+  @@index([chatId])
+  @@index([userId])
+}
+
+model Message {
+  id String @id @default(uuid())
+
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chatId String
+
+  sender   User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId String
+
+  text        String
+  attachments String[] @default([])
+
+  isRead      Boolean   @default(false)
+  readAt      DateTime?
+  deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([chatId])
+  @@index([senderId])
+  @@index([createdAt])
+}

@@ -151,17 +151,20 @@ export const checkPermission = (permission) => {
 
 export const socketAuth = async (socket, next) => {
   try {
-    const token = socket.handshake.query.token;
+    let token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    if (token && token.startsWith("Bearer ")) {
+      token = token.slice(7).trim();
+    }
 
-    console.log("Incoming Token:", token);
+    console.log("Incoming Socket Token:", token ? "present" : "missing");
 
     if (!token) {
-      console.log("No token provided");
+      console.log("No token provided for socket");
       return next(new Error("Authentication failed"));
     }
 
-    // IMPORTANT: use sync verify
     const decoded = Jwt.verify(token, process.env.JWT_SK);
+
 
     const findUser = await prisma.user.findUnique({
       where: { id: decoded.id },

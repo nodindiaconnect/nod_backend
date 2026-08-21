@@ -1,6 +1,7 @@
 import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
 import sanitizeData from "../utils/sanitizeHtml.js";
+import ProjectService from "../services/projectService.js";
 
 import pkg from "@prisma/client";
 const { Prisma } = pkg;
@@ -894,7 +895,38 @@ class ClientController {
         }
     }
 
+    static async getProjectTeam(req, res) {
+        try {
+            const { projectId } = req.params;
+            const team = await ProjectService.getProjectTeam(projectId, req.user);
+            return helper.success(res, "Project team fetched successfully", team);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, error.message.includes("Unauthorized") ? 403 : 400);
+        }
+    }
+
+    static async transitionProjectStatus(req, res) {
+        try {
+            const { projectId } = req.params;
+            const { status, reason } = req.body;
+            const updated = await ProjectService.transitionProjectStatus(projectId, status, req.user, reason, req);
+            return helper.success(res, "Project status updated successfully", updated);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, error.message.includes("Unauthorized") ? 403 : 400);
+        }
+    }
+
+    static async removeTeamMember(req, res) {
+        try {
+            const { projectId, memberId } = req.params;
+            const { reason } = req.body;
+            const removed = await ProjectService.removeTeamMember(projectId, memberId, req.user, reason, req);
+            return helper.success(res, "Team member removed successfully", removed);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, error.message.includes("Unauthorized") ? 403 : 400);
+        }
+    }
 
 }
 
-export default ClientController;
+export default ClientController;

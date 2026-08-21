@@ -1,22 +1,40 @@
 model Bid {
   id String @id @default(uuid())
 
-  project   Project @relation(fields: [projectId], references: [id])
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
 
-  amount Float
+  amount           Float
+  quotedPrice      Float?
+  proposedDuration String?
+  proposal         String?
+  portfolioLink    String?
+  role             ServiceType?
 
-  designer   Designer? @relation(fields: [designerId], references: [id])
+  designer   Designer?   @relation(fields: [designerId], references: [id], onDelete: Cascade)
   designerId String?
 
-  architect   Architect? @relation(fields: [architectId], references: [id])
+  architect   Architect?  @relation(fields: [architectId], references: [id], onDelete: Cascade)
   architectId String?
 
-  contractor   Contractor? @relation(fields: [contractorId], references: [id])
+  contractor   Contractor? @relation(fields: [contractorId], references: [id], onDelete: Cascade)
   contractorId String?
 
-  status BidStatus @default(PENDING)
+  status          BidStatus   @default(PENDING)
+  isShortlisted   Boolean     @default(false)
+  validUntil      DateTime?
+  rejectionReason String?
+
+  projectTeam ProjectTeam?
+  chats       Chat[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@index([designerId])
+  @@index([architectId])
+  @@index([contractorId])
 }
+

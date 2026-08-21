@@ -78,7 +78,15 @@ model User {
   followers Follow[] @relation("Following") // people who follow this user
   following Follow[] @relation("Follower") // people this user follows
 
+  projectTeams     ProjectTeam[]
+  chatParticipants ChatParticipant[]
+  messagesSent     Message[]         @relation("SentMessages")
+  auditLogs        AuditLog[]        @relation("AdminAuditLogs")
+  reviewsGiven     Review[]          @relation("ReviewsGiven")
+  reviewsReceived  Review[]          @relation("ReviewsReceived")
+
   contactDetails ContactDetails?
+
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -8,6 +8,11 @@ import AdminRouter from "./adminRoutes/adminAllRoutes.js"
 import MaterialSupplier from "./materialSupplierRouter.js"
 import contactRouter from "./contactRouter.js"
 import PortfolioRouter from "./postFollowRouter.js"
+import biddingRouter from "./biddingRouter.js";
+import chatRoutes from "./chatRoutes.js";
+import reviewRouter from "./reviewRouter.js";
+import helper from "../helper/helper.js";
+
 let router = Router();
 
 // chatbotRoutes#########################################
@@ -28,6 +33,11 @@ router.use("/Contractor", ContractorRouter);
 router.use("/materialSupplier", MaterialSupplier);
 router.use("/contact", contactRouter);
 router.use("/portfolio", PortfolioRouter);
+router.use("/bids", biddingRouter);
+router.use("/chat", chatRoutes);
+router.use("/reviews", reviewRouter);
 
 router.use("/Designer", DesignerRouter);
 export default router;
+
+

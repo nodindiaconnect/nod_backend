@@ -1,0 +1,35 @@
+model Review {
+  id                  String       @id @default(uuid())
+  project             Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId           String
+
+  reviewer            User         @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewerId          String
+
+  reviewee            User         @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+  revieweeId          String
+
+  rating              Float        // Overall rating 1.0 to 5.0
+  qualityRating       Float?       // Quality of work 1.0 to 5.0
+  communicationRating Float?       // Communication rating 1.0 to 5.0
+  timelinessRating    Float?       // Timeliness & deadlines 1.0 to 5.0
+  budgetRating        Float?       // Budget adherence 1.0 to 5.0
+
+  title               String?
+  comment             String
+  role                ServiceType?
+
+  photos              String[]     @default([])
+  reply               String?      // Reply from reviewee
+  repliedAt           DateTime?
+
+  isPublished         Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@unique([projectId, reviewerId, revieweeId])
+  @@index([reviewerId])
+  @@index([revieweeId])
+  @@index([projectId])
+  @@index([rating])
+}

@@ -9,6 +9,7 @@ import http from "http";
 import { connectToDatabase } from "./config/config.js";
 import { connectToPostgres } from "./config/postgres.js";
 import { sanitizeRequest } from "./middleware/sanitize.js";
+import { initSocketServer } from "./socket/socketServer.js";
 dotenv.config();
 
 const app = Express();
@@ -50,6 +51,8 @@ app.use((err, req, res, next) => {
 connectToPostgres();
 
 const server = http.createServer(app);
+initSocketServer(server);
+
 server.listen(PORT, "0.0.0.0", () => {
   logger.info(`App started on port ${PORT}`);
-});
+});
