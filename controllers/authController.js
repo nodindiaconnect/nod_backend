@@ -4,7 +4,7 @@ import JWT from "jsonwebtoken";
 import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
 import emailService from "../helper/emailService.js";
-import sessionStore from "../helper/sessionStore.js";
+import sessionStore from "../helper/Sessionstore.js";
 import sanitizeData from "../utils/sanitizeHtml.js";
 import {
   isValidEmail,
