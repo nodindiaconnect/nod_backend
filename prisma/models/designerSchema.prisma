@@ -11,6 +11,7 @@ model Designer {
 
   certifications  String[] @default([])
   designStyles    String[] @default([])
+  category        String?
   specializations String[] @default([])
   serviceCities   String[] @default([])
 

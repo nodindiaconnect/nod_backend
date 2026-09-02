@@ -8,6 +8,78 @@ model Wallet {
   createdBy String
   updatedBy String
 
+  withdrawals Withdrawal[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Withdrawal {
+  id            String           @id @default(uuid())
+  wallet        Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  walletId      String
+  userId        String
+  amount        Float
+  bankAccount   String?
+  ifscCode      String?
+  accountHolder String?
+  status        WithdrawalStatus @default(PENDING)
+  referenceId   String?
+  failureReason String?
+  idempotencyKey String?         @unique
+
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([walletId])
+  @@index([status])
+}
+
+model Payment {
+  id                String         @id @default(uuid())
+  milestone         Milestone      @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  milestoneId       String
+  gateway           PaymentGateway @default(RAZORPAY)
+  gatewayOrderId    String?
+  gatewayPaymentId  String?
+  amount            Float
+  currency          String         @default("INR")
+  status            PaymentStatus  @default(CREATED)
+  idempotencyKey    String?        @unique
+  rawWebhookPayload Json?
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([milestoneId])
+  @@index([gatewayOrderId])
+  @@index([gatewayPaymentId])
+  @@index([status])
+}
+
+model WebhookEvent {
+  id          String    @id @default(uuid())
+  provider    String    @default("razorpay")
+  eventId     String    @unique
+  payload     Json
+  status      String    @default("processed")
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([provider, eventId])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  type      NotificationType
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@index([readAt])
+}
+

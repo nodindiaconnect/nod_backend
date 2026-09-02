@@ -1,5 +1,6 @@
 import helper from "../helper/helper.js";
 import ChatService from "../services/chatService.js";
+import { notifyNewMessage, notifyMessagesRead } from "../socket/socketServer.js";
 
 class ChatController {
     /**
@@ -73,6 +74,7 @@ class ChatController {
             const user = req.user;
 
             const message = await ChatService.sendMessage(chatId, user.id, text, attachments);
+            notifyNewMessage(chatId, user.id, message).catch(() => {});
             return helper.success(res, "Message sent successfully", message);
         } catch (error) {
             return helper.failed(res, error.message, {}, error.message.includes("Unauthorized") ? 403 : 400);
@@ -94,6 +96,7 @@ class ChatController {
             }
 
             const result = await ChatService.markAsRead(targetChatId, user.id, messageId);
+            notifyMessagesRead(targetChatId, user.id);
             return helper.success(res, "Messages marked as read", result);
         } catch (error) {
             return helper.failed(res, error.message, {}, 400);

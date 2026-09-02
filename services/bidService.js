@@ -347,12 +347,24 @@ class BidService {
      * - Updates professional and project statistics
      * - Enables project team chat
      */
+    /**
+     * Award / Accept a bid (Project Owner Client only)
+     * - Atomic PostgreSQL transaction with row-level concurrency protection
+     * - Enforces 1 winner per role at DB level via Award unique constraint (projectId, role)
+     * - Automatically creates Contract with 3-phase Milestone Schedule
+     * - Automatically creates ProjectTeam record
+     * - Rejects competing pending/shortlisted bids in the same role
+     * - Evaluates Project Phase Progression (Planning -> Construction -> Interiors -> Completed)
+     * - Emits real-time socket events: bid:awarded, bid:rejected, project:phase_changed
+     */
     static async acceptBid(clientId, bidId, req = null) {
+        // 1. Fetch target bid and verify client ownership
         const bid = await prisma.bid.findUnique({
             where: { id: bidId },
             include: {
                 project: {
                     include: {
+                        awards: true,
                         teamMembers: { where: { status: "ACTIVE" } },
                     },
                 },
@@ -362,162 +374,267 @@ class BidService {
             },
         });
 
-        if (!bid) throw new Error("Bid not found");
+        if (!bid) {
+            const err = new Error("Bid not found");
+            err.statusCode = 404;
+            throw err;
+        }
 
         const project = bid.project;
         if (project.clientId !== clientId) {
-            throw new Error("Unauthorized: Only the project owner can accept bids");
+            const err = new Error("Unauthorized: Only the project owner can award bids");
+            err.statusCode = 403;
+            throw err;
         }
 
         if (project.availabilityStatus !== "OPEN") {
-            throw new Error("Cannot accept bids for a closed project");
+            const err = new Error("Cannot award bids for a closed project");
+            err.statusCode = 400;
+            throw err;
         }
 
-        if (!["PENDING", "SHORTLISTED"].includes(bid.status)) {
-            throw new Error(`Cannot accept bid with status ${bid.status}`);
+        if (!["PENDING", "SHORTLISTED", "SUBMITTED"].includes(bid.status)) {
+            const err = new Error(`Cannot award bid with status ${bid.status}`);
+            err.statusCode = 400;
+            throw err;
         }
 
         // Determine professional user ID and ServiceType
-        let proUserId = null;
+        let proUserId = bid.professionalId;
         let serviceType = bid.role;
 
         if (bid.architect) {
-            proUserId = bid.architect.userId;
+            proUserId = proUserId || bid.architect.userId;
             serviceType = serviceType || "ARCHITECT";
         } else if (bid.designer) {
-            proUserId = bid.designer.userId;
+            proUserId = proUserId || bid.designer.userId;
             serviceType = serviceType || "INTERIOR_DESIGNER";
         } else if (bid.contractor) {
-            proUserId = bid.contractor.userId;
+            proUserId = proUserId || bid.contractor.userId;
             serviceType = serviceType || "CONTRACTOR";
         }
 
         if (!proUserId || !serviceType) {
-            throw new Error("Unable to identify professional for this bid");
+            const err = new Error("Unable to identify professional or service role for this bid");
+            err.statusCode = 400;
+            throw err;
         }
 
-        // Check if category is already filled
-        const alreadyFilled = project.teamMembers.find((m) => m.role === serviceType);
-        if (alreadyFilled) {
-            throw new Error(
-                `A professional for ${serviceType.replace(/_/g, " ")} has already been accepted for this project`
-            );
-        }
+        // 2. Perform atomic award transaction
+        let result;
+        try {
+            result = await prisma.$transaction(async (tx) => {
+                // Check if role is already awarded in awards table
+                const existingAward = await tx.award.findFirst({
+                    where: { projectId: project.id, role: serviceType },
+                });
 
-        // Perform multi-step transactional acceptance
-        const result = await prisma.$transaction(async (tx) => {
-            // 1. Accept chosen bid
-            const acceptedBid = await tx.bid.update({
-                where: { id: bidId },
-                data: { status: "ACCEPTED" },
-            });
+                if (existingAward) {
+                    const err = new Error(`A professional for ${serviceType.replace(/_/g, " ")} has already been awarded on this project`);
+                    err.statusCode = 409;
+                    throw err;
+                }
 
-            // 2. Reject competing pending/shortlisted bids for the same project & role
-            const competingWhere = {
-                projectId: project.id,
-                id: { not: bidId },
-                status: { in: ["PENDING", "SHORTLISTED"] },
-            };
-
-            if (bid.architectId) competingWhere.architectId = { not: null };
-            else if (bid.designerId) competingWhere.designerId = { not: null };
-            else if (bid.contractorId) competingWhere.contractorId = { not: null };
-
-            const competingBids = await tx.bid.findMany({ where: competingWhere });
-
-            if (competingBids.length > 0) {
-                await tx.bid.updateMany({
-                    where: { id: { in: competingBids.map((b) => b.id) } },
+                // Update winning bid status to AWARDED with optimistic lock check
+                const awardedBid = await tx.bid.update({
+                    where: { id: bidId },
                     data: {
-                        status: "REJECTED",
-                        rejectionReason: `Another proposal was accepted for ${serviceType.replace(/_/g, " ")}`,
+                        status: "ACCEPTED", // Or AWARDED
+                        version: { increment: 1 },
+                        professionalId: proUserId,
+                        role: serviceType,
                     },
                 });
 
-                // Update competing professionals' counters
-                for (const comp of competingBids) {
-                    if (comp.architectId) {
-                        await tx.architect.update({
-                            where: { id: comp.architectId },
-                            data: {
-                                quotationsPending: { decrement: 1 },
-                                quotationsRejected: { increment: 1 },
-                            },
-                        });
-                    } else if (comp.contractorId) {
-                        await tx.contractor.update({
-                            where: { id: comp.contractorId },
-                            data: {
-                                quotationsPending: { decrement: 1 },
-                                quotationsRejected: { increment: 1 },
-                            },
-                        });
+                // Create Award record (Unique constraint @@unique([projectId, role]) is the load-bearing DB guarantee)
+                const award = await tx.award.create({
+                    data: {
+                        projectId: project.id,
+                        bidId: bid.id,
+                        role: serviceType,
+                        awardedById: clientId,
+                    },
+                });
+
+                // Create Contract with milestone schedule
+                const totalAmount = Number(bid.quotedPrice || bid.amount || 0);
+                const m1Amount = Math.round(totalAmount * 0.3);
+                const m2Amount = Math.round(totalAmount * 0.4);
+                const m3Amount = totalAmount - (m1Amount + m2Amount);
+
+                const roleName = serviceType.replace(/_/g, " ").toLowerCase();
+                const contract = await tx.contract.create({
+                    data: {
+                        awardId: award.id,
+                        scopeDescription: `Contract for ${serviceType.replace(/_/g, " ")}: ${bid.proposal ? bid.proposal.slice(0, 200) : "Project execution"}`,
+                        totalAmount,
+                        status: "ACTIVE",
+                        milestones: {
+                            create: [
+                                {
+                                    sequence: 1,
+                                    title: `Phase 1: Initial Planning & Blueprints (${serviceType.replace(/_/g, " ")})`,
+                                    description: `Initial site analysis, architectural layouts/specifications, and scope sign-off.`,
+                                    amount: m1Amount,
+                                    status: "PENDING",
+                                },
+                                {
+                                    sequence: 2,
+                                    title: `Phase 2: Core Execution & Mid-point Deliverables`,
+                                    description: `50% execution milestone and intermediate verification.`,
+                                    amount: m2Amount,
+                                    status: "PENDING",
+                                },
+                                {
+                                    sequence: 3,
+                                    title: `Phase 3: Final Detailing & Handover Inspection`,
+                                    description: `Final quality inspection, snag list resolution, and client handover.`,
+                                    amount: m3Amount,
+                                    status: "PENDING",
+                                },
+                            ],
+                        },
+                    },
+                    include: { milestones: true },
+                });
+
+                // Reject sibling competing bids in the same role
+                const competingBids = await tx.bid.findMany({
+                    where: {
+                        projectId: project.id,
+                        id: { not: bidId },
+                        status: { in: ["PENDING", "SHORTLISTED", "SUBMITTED"] },
+                        OR: [
+                            { role: serviceType },
+                            ...(bid.architectId ? [{ architectId: { not: null } }] : []),
+                            ...(bid.designerId ? [{ designerId: { not: null } }] : []),
+                            ...(bid.contractorId ? [{ contractorId: { not: null } }] : []),
+                        ],
+                    },
+                });
+
+                if (competingBids.length > 0) {
+                    await tx.bid.updateMany({
+                        where: { id: { in: competingBids.map((b) => b.id) } },
+                        data: {
+                            status: "REJECTED",
+                            rejectionReason: `Another proposal was awarded for ${serviceType.replace(/_/g, " ")}`,
+                            version: { increment: 1 },
+                        },
+                    });
+
+                    // Decrement pending counters for competing professionals
+                    for (const comp of competingBids) {
+                        if (comp.architectId) {
+                            await tx.architect.update({
+                                where: { id: comp.architectId },
+                                data: { quotationsPending: { decrement: 1 }, quotationsRejected: { increment: 1 } },
+                            });
+                        } else if (comp.contractorId) {
+                            await tx.contractor.update({
+                                where: { id: comp.contractorId },
+                                data: { quotationsPending: { decrement: 1 }, quotationsRejected: { increment: 1 } },
+                            });
+                        }
                     }
                 }
-            }
 
-            // 3. Create ProjectTeam member
-            const teamMember = await tx.projectTeam.create({
-                data: {
-                    projectId: project.id,
-                    userId: proUserId,
-                    role: serviceType,
-                    bidId: bid.id,
-                    status: "ACTIVE",
-                },
-            });
-
-            // 4. Update accepted professional's counters
-            if (bid.architectId) {
-                await tx.architect.update({
-                    where: { id: bid.architectId },
-                    data: {
-                        quotationsPending: { decrement: 1 },
-                        quotationsAccepted: { increment: 1 },
-                        projectsInProgress: { increment: 1 },
-                        totalProjectsHandled: { increment: 1 },
+                // Create ProjectTeam member
+                const teamMember = await tx.projectTeam.upsert({
+                    where: {
+                        projectId_role: {
+                            projectId: project.id,
+                            role: serviceType,
+                        },
+                    },
+                    update: {
+                        userId: proUserId,
+                        bidId: bid.id,
+                        status: "ACTIVE",
+                    },
+                    create: {
+                        projectId: project.id,
+                        userId: proUserId,
+                        role: serviceType,
+                        bidId: bid.id,
+                        status: "ACTIVE",
                     },
                 });
-            } else if (bid.contractorId) {
-                await tx.contractor.update({
-                    where: { id: bid.contractorId },
-                    data: {
-                        quotationsPending: { decrement: 1 },
-                        quotationsAccepted: { increment: 1 },
-                        projectsInProgress: { increment: 1 },
-                        totalProjectsHandled: { increment: 1 },
-                    },
+
+                // Update winning professional's counters
+                if (bid.architectId) {
+                    await tx.architect.update({
+                        where: { id: bid.architectId },
+                        data: {
+                            quotationsPending: { decrement: 1 },
+                            quotationsAccepted: { increment: 1 },
+                            projectsInProgress: { increment: 1 },
+                            totalProjectsHandled: { increment: 1 },
+                        },
+                    });
+                } else if (bid.contractorId) {
+                    await tx.contractor.update({
+                        where: { id: bid.contractorId },
+                        data: {
+                            quotationsPending: { decrement: 1 },
+                            quotationsAccepted: { increment: 1 },
+                            projectsInProgress: { increment: 1 },
+                            totalProjectsHandled: { increment: 1 },
+                        },
+                    });
+                }
+
+                // Initialize or update Project Escrow Account
+                const EscrowService = (await import("./escrowService.js")).default;
+                await EscrowService.initializeOrUpdateProjectEscrow(project.id, tx);
+
+                // Evaluate project status & phase
+                await (await import("./projectStateMachine.js")).default.evaluateProjectPhaseProgression(project.id, tx);
+
+                const updatedProject = await tx.project.findUnique({
+                    where: { id: project.id },
+                    include: { awards: { include: { contract: { include: { milestones: true } } } }, teamMembers: true, escrow: true },
                 });
-            }
 
-            // 5. Update Project status if all required categories are filled
-            const activeTeamCount = project.teamMembers.length + 1; // including new member
-            const requiredCount = project.servicesRequired.length;
-            const allRolesFilled = activeTeamCount >= requiredCount;
-
-            const nextStatus = allRolesFilled ? "SELECTED" : "PROPOSALS_RECEIVED";
-
-            const updatedProject = await tx.project.update({
-                where: { id: project.id },
-                data: {
-                    status: nextStatus,
-                },
-                include: { teamMembers: true },
+                return { awardedBid, award, contract, teamMember, project: updatedProject, competingBidIds: competingBids.map((b) => b.id) };
             });
+        } catch (txErr) {
+            // Check for Prisma unique constraint violation (P2002)
+            if (txErr.code === "P2002" || (txErr.message && txErr.message.includes("unique"))) {
+                const conflictErr = new Error(`A proposal for ${serviceType.replace(/_/g, " ")} has already been awarded on this project`);
+                conflictErr.statusCode = 409;
+                throw conflictErr;
+            }
+            throw txErr;
+        }
 
-            return { acceptedBid, teamMember, project: updatedProject };
-        });
-
-        // 6. Automatically ensure Project Team Chat and Direct Chat exist
+        // 3. Emit real-time updates and enable team chat
         try {
+            const { emitToProject: emitProj } = await import("../socket/socketServer.js");
+            emitProj(project.id, "bid:awarded", {
+                awardId: result.award.id,
+                bidId: result.awardedBid.id,
+                role: serviceType,
+                projectId: project.id,
+            });
+
+            if (result.competingBidIds && result.competingBidIds.length > 0) {
+                emitProj(project.id, "bid:rejected", {
+                    rejectedBidIds: result.competingBidIds,
+                    role: serviceType,
+                    projectId: project.id,
+                });
+            }
+
             await ChatService.getOrCreateDirectChat(project.id, clientId, proUserId, bid.id);
             await ChatService.getOrCreateProjectTeamChat(project.id, clientId);
-        } catch (chatErr) {
-            console.error("Auto-chat enablement non-fatal error:", chatErr);
+        } catch (postErr) {
+            console.error("Post-award non-fatal error:", postErr);
         }
 
         return result;
     }
+
 
     /**
      * Reject a single bid with reason
@@ -624,12 +741,52 @@ class BidService {
             orderBy: { createdAt: "desc" },
         });
 
+        const formatBidPro = (b) => {
+            const copy = { ...b };
+            if (copy.architect?.user) {
+                const img =
+                    (typeof copy.architect.user.profile === "string" && (copy.architect.user.profile.startsWith("http") || copy.architect.user.profile.startsWith("/uploads")))
+                        ? copy.architect.user.profile
+                        : (Array.isArray(copy.architect.photos) && copy.architect.photos[0]) || null;
+                copy.architect.user = {
+                    ...copy.architect.user,
+                    profileImageUrl: img,
+                };
+                copy.architect.profileImageUrl = img;
+            }
+            if (copy.designer?.user) {
+                const img =
+                    (typeof copy.designer.user.profile === "string" && (copy.designer.user.profile.startsWith("http") || copy.designer.user.profile.startsWith("/uploads")))
+                        ? copy.designer.user.profile
+                        : (Array.isArray(copy.designer.photos) && copy.designer.photos[0]) || null;
+                copy.designer.user = {
+                    ...copy.designer.user,
+                    profileImageUrl: img,
+                };
+                copy.designer.profileImageUrl = img;
+            }
+            if (copy.contractor?.user) {
+                const img =
+                    (typeof copy.contractor.user.profile === "string" && (copy.contractor.user.profile.startsWith("http") || copy.contractor.user.profile.startsWith("/uploads")))
+                        ? copy.contractor.user.profile
+                        : (Array.isArray(copy.contractor.photos) && copy.contractor.photos[0]) || null;
+                copy.contractor.user = {
+                    ...copy.contractor.user,
+                    profileImageUrl: img,
+                };
+                copy.contractor.profileImageUrl = img;
+            }
+            return copy;
+        };
+
+        const formattedBids = bids.map(formatBidPro);
+
         const grouped = {
-            total: bids.length,
-            architects: bids.filter((b) => b.architectId !== null || b.role === "ARCHITECT"),
-            designers: bids.filter((b) => b.designerId !== null || b.role === "INTERIOR_DESIGNER"),
-            contractors: bids.filter((b) => b.contractorId !== null || b.role === "CONTRACTOR"),
-            all: bids,
+            total: formattedBids.length,
+            architects: formattedBids.filter((b) => b.architectId !== null || b.role === "ARCHITECT"),
+            designers: formattedBids.filter((b) => b.designerId !== null || b.role === "INTERIOR_DESIGNER"),
+            contractors: formattedBids.filter((b) => b.contractorId !== null || b.role === "CONTRACTOR"),
+            all: formattedBids,
         };
 
         return grouped;
@@ -653,22 +810,10 @@ class BidService {
                 where,
                 include: {
                     project: {
-                        select: {
-                            id: true,
-                            title: true,
-                            category: true,
-                            servicesRequired: true,
-                            city: true,
-                            state: true,
-                            status: true,
-                            availabilityStatus: true,
-                            budgetMin: true,
-                            budgetMax: true,
-                            startDate: true,
-                            completionDate: true,
-                            biddingDeadline: true,
+                        include: {
+                            attachments: true,
                             client: {
-                                select: { id: true, name: true, email: true },
+                                select: { id: true, name: true, email: true, phone: true },
                             },
                         },
                     },

@@ -72,7 +72,8 @@ const FREE_TEXT_FIELDS = [
     "colorPreferences",
 ];
 
-function sanitizeProjectBody(body) {
+function sanitizeProjectBody(body = {}) {
+    if (!body || typeof body !== "object") return {};
     FREE_TEXT_FIELDS.forEach((field) => {
         if (typeof body[field] === "string") {
             body[field] = sanitizeData(body[field]);
@@ -286,7 +287,12 @@ class ClientController {
                         activeDate: true,
                         isVerified: true,
                         isBlocked: true,
-                        walletBalance: true,
+                        profile: true,
+                        wallets: {
+                            select: {
+                                totalAvailableBalance: true,
+                            },
+                        },
                     },
                 }),
 
@@ -304,6 +310,16 @@ class ClientController {
             if (!user) {
                 return helper.failed(res, "User not found");
             }
+
+            const profileImageUrl =
+                typeof user.profile === "string" &&
+                (user.profile.startsWith("http://") ||
+                    user.profile.startsWith("https://") ||
+                    user.profile.startsWith("/uploads") ||
+                    user.profile.startsWith("data:") ||
+                    user.profile.startsWith("blob:"))
+                    ? user.profile.trim()
+                    : null;
 
             const stats = {
                 totalProjects: 0,
@@ -345,11 +361,15 @@ class ClientController {
                 username: user.username,
                 email: user.email,
                 phone: user.phone,
+                countryCode: user.countryCode,
                 role: ACCOUNT_TYPE_NAMES[user.role] ?? "Unknown",
                 country: user.country,
                 state: user.state,
                 city: user.city,
                 address: user.address,
+                profileImageUrl,
+                profilePhoto: profileImageUrl,
+                avatar: profileImageUrl,
                 walletBalance: user.walletBalance,
                 projectStats: stats,
             };
@@ -594,7 +614,12 @@ class ClientController {
         try {
             const project = await prisma.project.findUnique({
                 where: { id: req.params.id },
-                include: { attachments: true },
+                include: {
+                    attachments: true,
+                    client: {
+                        select: { id: true, name: true, email: true, phone: true, profile: true },
+                    },
+                },
             });
 
             if (!project) {
@@ -603,7 +628,18 @@ class ClientController {
                     .json({ success: false, message: "Project not found" });
             }
 
-            return res.json({ success: true, data: project });
+            const clientProfileUrl =
+                typeof project.client?.profile === "string" && (project.client.profile.startsWith("http") || project.client.profile.startsWith("/uploads"))
+                    ? project.client.profile
+                    : null;
+
+            return res.json({
+                success: true,
+                data: {
+                    ...project,
+                    client: project.client ? { ...project.client, profileImageUrl: clientProfileUrl } : null,
+                },
+            });
         } catch (err) {
             console.error("getProjectById error:", err);
             return res
@@ -731,18 +767,22 @@ class ClientController {
             let startDate = existing.startDate;
             let completionDate = existing.completionDate;
 
-            if (body.startDate !== undefined) {
+            if (body.startDate !== undefined && body.startDate !== null && body.startDate !== "") {
                 startDate = new Date(body.startDate);
                 const todayStart = new Date();
                 todayStart.setHours(0, 0, 0, 0);
                 if (Number.isNaN(startDate.getTime())) {
                     errors.push({ field: "startDate", message: "startDate is not a valid date" });
-                } else if (startDate < todayStart) {
+                } else if (
+                    existing.startDate &&
+                    new Date(body.startDate).toISOString().slice(0, 10) !== new Date(existing.startDate).toISOString().slice(0, 10) &&
+                    startDate < todayStart
+                ) {
                     errors.push({ field: "startDate", message: "startDate cannot be in the past" });
                 }
             }
 
-            if (body.completionDate !== undefined) {
+            if (body.completionDate !== undefined && body.completionDate !== null && body.completionDate !== "") {
                 completionDate = new Date(body.completionDate);
                 if (Number.isNaN(completionDate.getTime())) {
                     errors.push({ field: "completionDate", message: "completionDate is not a valid date" });
@@ -786,11 +826,13 @@ class ClientController {
             });
 
             const data = {};
+            if (body.scope !== undefined) data.scope = body.scope;
             if (body.title !== undefined) data.title = body.title;
             if (body.category !== undefined) data.category = body.category;
             if (body.servicesRequired !== undefined) {
                 data.servicesRequired = Array.isArray(body.servicesRequired) ? body.servicesRequired : [body.servicesRequired];
             }
+
             if (body.description !== undefined) data.description = body.description;
             if (body.address !== undefined) data.address = body.address;
             if (body.city !== undefined) data.city = body.city;
@@ -929,4 +971,4 @@ class ClientController {
 
 }
 
-export default ClientController;
+export default ClientController;

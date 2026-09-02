@@ -101,9 +101,10 @@ class BidController {
         try {
             const { bidId } = req.params;
             const result = await BidService.acceptBid(req.user.id, bidId, req);
-            return helper.success(res, "Bid accepted and project team created successfully", result);
+            return helper.success(res, "Bid awarded and contract created successfully", result);
         } catch (error) {
-            return helper.failed(res, error.message, {}, 400);
+            const statusCode = error.statusCode || (error.message.includes("already") || error.message.includes("concurrent") ? 409 : 400);
+            return helper.failed(res, error.message, {}, statusCode);
         }
     }
 
@@ -118,7 +119,7 @@ class BidController {
             const result = await BidService.rejectBid(req.user.id, bidId, reason);
             return helper.success(res, "Bid rejected successfully", result);
         } catch (error) {
-            return helper.failed(res, error.message, {}, 400);
+            return helper.failed(res, error.message, {}, error.statusCode || 400);
         }
     }
 
@@ -131,7 +132,7 @@ class BidController {
             const result = await BidService.getMyBids(req.user, req.query);
             return helper.success(res, "My bids fetched successfully", result);
         } catch (error) {
-            return helper.failed(res, error.message, {}, 400);
+            return helper.failed(res, error.message, {}, error.statusCode || 400);
         }
     }
 }

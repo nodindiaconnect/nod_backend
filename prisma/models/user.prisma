@@ -60,19 +60,24 @@ model User {
   address String? @default("N/A")
   profile String?
 
-  walletBalance Float @default(0)
+  ratingCache Float?
+  ratingStats Json?
 
-  otps       Otp[]
-  wallets    Wallet[]
-  projects   Project[] // opposite side of Project.client relation
-  products   Product[]
-  architect  Architect?
-  contractor Contractor?
-  designer   Designer?
+  otps          Otp[]
+  wallets       Wallet[]
+  projects      Project[] // opposite side of Project.client relation
+  awardsGiven   Award[]        @relation("AwardsGiven")
+  bidsSubmitted Bid[]          @relation("ProfessionalBids")
+  notifications Notification[]
+  products      Product[]
+  architect     Architect?
+  contractor    Contractor?
+  designer      Designer?
 
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
   specialization      String?
+  category            String?
 
   posts     Post[]
   followers Follow[] @relation("Following") // people who follow this user
@@ -85,6 +90,10 @@ model User {
   reviewsGiven     Review[]          @relation("ReviewsGiven")
   reviewsReceived  Review[]          @relation("ReviewsReceived")
 
+  disputesRaised     ProjectDispute[]           @relation("DisputesRaised")
+  disputesResolved   ProjectDispute[]           @relation("DisputesResolved")
+  escrowTransactions ProjectEscrowTransaction[]
+
   contactDetails ContactDetails?
 
 
@@ -95,3 +104,4 @@ model User {
   @@index([isDeleted])
   @@index([isActive, isBlocked])
 }
+

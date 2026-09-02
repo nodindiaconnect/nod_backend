@@ -101,3 +101,57 @@ export const getEligibleToReview = async (req, res) => {
     });
   }
 };
+
+export const getReviewById = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const data = await reviewService.getReviewById(reviewId);
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Get Review By ID Error:", error);
+    return res.status(404).json({
+      success: false,
+      message: error.message || "Review not found",
+    });
+  }
+};
+
+export const updateReview = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const data = await reviewService.updateReview(req.user, reviewId, req.body);
+    return res.status(200).json({
+      success: true,
+      message: "Review updated successfully",
+      data,
+    });
+  } catch (error) {
+    console.error("Update Review Error:", error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to update review",
+    });
+  }
+};
+
+export const deleteReview = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const data = await reviewService.deleteReview(req.user, reviewId);
+    return res.status(200).json({
+      success: true,
+      message: "Review deleted successfully",
+      data,
+    });
+  } catch (error) {
+    console.error("Delete Review Error:", error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to delete review",
+    });
+  }
+};
+

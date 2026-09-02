@@ -1,10 +1,15 @@
 import { Router } from "express";
 import AuthController from "../controllers/authController.js";
+import CategoryController from "../controllers/categoryController.js";
 import validation from "../helper/validation.js";
 import { Auth, verifyAdmin, verifyUser } from "../middleware/authenticate.js";
 import { rateLimiter } from "../helper/rateLimit.js";
 
 let router = Router();
+
+// ── CATEGORIES & SPECIALIZATIONS (public for registration) ───
+router.get("/categories-specializations", CategoryController.getCategoriesAndSpecializations);
+router.get("/categories", CategoryController.getCategoriesAndSpecializations);
 
 // ── REGISTER (multi-step flow) ──────────────────────────────
 router.post("/register/start", AuthController.registerStart);

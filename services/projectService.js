@@ -1,5 +1,6 @@
 import prisma from "../config/prismaClient.js";
 import AuditService from "./auditService.js";
+import { formatParticipantUser } from "./chatService.js";
 
 const VALID_TRANSITIONS = {
     DRAFT: ["WAITING_FOR_QUOTATIONS", "CANCELLED"],
@@ -99,11 +100,17 @@ class ProjectService {
                             select: {
                                 id: true,
                                 name: true,
+                                username: true,
                                 email: true,
                                 phone: true,
+                                role: true,
                                 city: true,
                                 state: true,
+                                country: true,
                                 profile: true,
+                                architect: true,
+                                designer: true,
+                                contractor: true,
                             },
                         },
                         bid: true,
@@ -125,7 +132,10 @@ class ProjectService {
             throw new Error("Unauthorized to view project team");
         }
 
-        return project.teamMembers;
+        return (project.teamMembers || []).map((m) => ({
+            ...m,
+            user: formatParticipantUser(m.user),
+        }));
     }
 
     /**
