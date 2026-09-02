@@ -6,6 +6,7 @@ import AdminBiddingRouter from "./adminBiddingRoutes.js";
 import AdminChatRouter from "./adminChatRoutes.js";
 import AdminProjectTeamRouter from "./adminProjectTeamRoutes.js";
 import AdminDashboardRouter from "./adminDashboardRoutes.js";
+import AdminFinanceRouter from "./adminFinanceRoutes.js";
 import helper from "../../helper/helper.js";
 
 let router = Router();
@@ -22,5 +23,6 @@ router.use("/bids", AdminBiddingRouter);
 router.use("/chats", AdminChatRouter);
 router.use("/teams", AdminProjectTeamRouter);
 router.use("/dashboard", AdminDashboardRouter);
+router.use("/finance", AdminFinanceRouter);
 
 export default router;

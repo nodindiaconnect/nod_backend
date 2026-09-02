@@ -6,6 +6,8 @@ import { Auth, verifyAdmin, verifyUser } from "../middleware/authenticate.js";
 let router = Router();
 
 router.get("/me/userDetails", Auth, MaterialSupplierController.getUserDetails);
+router.get("/me/profile", Auth, MaterialSupplierController.getMyProfile);
+router.patch("/me/profile", Auth, MaterialSupplierController.editMyProfile);
 
 // ---------------- PRODUCTS ----------------
 router.post("/create-products", Auth, MaterialSupplierController.createProduct);

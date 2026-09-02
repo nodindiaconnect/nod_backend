@@ -15,8 +15,11 @@ router.delete("/post/:postId", Auth, PostController.deletePost);
 // Portfolio routes
 router.get("/all", PostController.getAllPortfolios);
 router.get("/all/by-role", PostController.getAllPortfoliosByRole);
+router.get("/performance/:userId", PostController.getUserPerformanceMetrics);
+router.get("/:userId/performance", PostController.getUserPerformanceMetrics);
 router.get("/:userId/posts-paginated", PostController.getUserPortfolioWithPagination);
-router.get("/:userId", PostController.getUserPortfolio)
+router.get("/:userId", PostController.getUserPortfolio);
+
 
 // Feed route
 router.get("/feed", Auth, PostController.getHomeFeed);

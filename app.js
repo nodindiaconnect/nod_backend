@@ -19,8 +19,14 @@ app.use(helmet());
 app.use(cors());
 app.disable("x-powered-by");
 
-app.use(Express.json({ limit: "50mb" }));
+app.use(Express.json({
+    limit: "50mb",
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    },
+}));
 app.use(Express.urlencoded({ limit: "50mb", extended: true }));
+
 
 // Health check
 app.get("/", (req, res) => {

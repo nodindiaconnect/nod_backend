@@ -1,5 +1,5 @@
 import express from "express";
-import { authenticate } from "../middleware/authenticate.js";
+import {Auth} from "../middleware/authenticate.js"
 import {
   createReview,
   getMyReviews,
@@ -7,15 +7,21 @@ import {
   getReviewsForProject,
   replyToReview,
   getEligibleToReview,
+  getReviewById,
+  updateReview,
+  deleteReview,
 } from "../controllers/reviewController.js";
 
 const router = express.Router();
 
-router.post("/", authenticate, createReview);
-router.get("/me", authenticate, getMyReviews);
-router.get("/eligible", authenticate, getEligibleToReview);
+router.post("/", Auth, createReview);
+router.get("/me", Auth, getMyReviews);
+router.get("/eligible", Auth, getEligibleToReview);
 router.get("/user/:userId", getReviewsForUser);
 router.get("/project/:projectId", getReviewsForProject);
-router.post("/:reviewId/reply", authenticate, replyToReview);
+router.get("/:reviewId", getReviewById);
+router.put("/:reviewId", Auth, updateReview);
+router.delete("/:reviewId", Auth, deleteReview);
+router.post("/:reviewId/reply", Auth, replyToReview);
 
 export default router;

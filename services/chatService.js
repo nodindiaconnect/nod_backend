@@ -1,5 +1,146 @@
 import prisma from "../config/prismaClient.js";
 import sanitizeData from "../utils/sanitizeHtml.js";
+import ChatValidationService from "./chatValidationService.js";
+
+const USER_SELECT_WITH_PROFILES = {
+    id: true,
+    name: true,
+    username: true,
+    profile: true,
+    role: true,
+    city: true,
+    state: true,
+    country: true,
+    architect: true,
+    designer: true,
+    contractor: true,
+};
+
+const safeJsonArray = (val) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    try {
+        const parsed = JSON.parse(val);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+export function formatParticipantUser(rawUser) {
+    if (!rawUser) return null;
+
+    const role = rawUser.role;
+    let profileImageUrl = null;
+
+    // Check if rawUser.profile is a valid image URL/path
+    if (typeof rawUser.profile === "string" && rawUser.profile.trim() !== "") {
+        const trimmed = rawUser.profile.trim();
+        if (
+            trimmed.startsWith("http://") ||
+            trimmed.startsWith("https://") ||
+            trimmed.startsWith("/uploads") ||
+            trimmed.startsWith("data:") ||
+            trimmed.startsWith("blob:")
+        ) {
+            profileImageUrl = trimmed;
+        }
+    }
+
+    let profileObj = null;
+
+    if (role === 3) {
+        // ARCHITECT Schema
+        const arch = rawUser.architect;
+        if (arch) {
+            profileObj = {
+                bio: arch.bio || "",
+                specialization: safeJsonArray(arch.specializations).join(", ") || "",
+                specializations: safeJsonArray(arch.specializations),
+                experience: arch.yearsOfExperience ?? 0,
+                yearsOfExperience: arch.yearsOfExperience ?? 0,
+                experienceLevel: arch.experienceLevel || "INTERMEDIATE",
+                licenseNumber: arch.licenseNumber || "",
+                licenseIssuingBody: arch.licenseIssuingBody || "",
+                rating: arch.rating ?? 0,
+                totalReviews: arch.totalReviews ?? 0,
+                serviceCities: safeJsonArray(arch.serviceCities),
+                portfolioLinks: safeJsonArray(arch.portfolioLinks),
+            };
+        }
+    } else if (role === 2) {
+        // DESIGNER Schema
+        const des = rawUser.designer;
+        if (des) {
+            profileObj = {
+                bio: des.bio || "",
+                specialization: Array.isArray(des.specializations) ? des.specializations.join(", ") : "",
+                specializations: Array.isArray(des.specializations) ? des.specializations : [],
+                designStyles: Array.isArray(des.designStyles) ? des.designStyles : [],
+                experience: des.yearsOfExperience ?? 0,
+                yearsOfExperience: des.yearsOfExperience ?? 0,
+                experienceLevel: des.experienceLevel || "INTERMEDIATE",
+                rating: des.rating ?? 0,
+                totalReviews: des.totalReviews ?? 0,
+                serviceCities: Array.isArray(des.serviceCities) ? des.serviceCities : [],
+                portfolioLinks: Array.isArray(des.portfolioLinks) ? des.portfolioLinks : [],
+            };
+            if (!profileImageUrl && Array.isArray(des.photos) && des.photos.length > 0) {
+                profileImageUrl = des.photos[0];
+            }
+        }
+    } else if (role === 4) {
+        // CONTRACTOR Schema
+        const con = rawUser.contractor;
+        if (con) {
+            profileObj = {
+                bio: con.bio || "",
+                specialization: safeJsonArray(con.workTypes).join(", ") || "",
+                workTypes: safeJsonArray(con.workTypes),
+                experience: con.yearsOfExperience ?? 0,
+                yearsOfExperience: con.yearsOfExperience ?? 0,
+                experienceLevel: con.experienceLevel || "INTERMEDIATE",
+                teamSize: con.teamSize ?? null,
+                licenseNumber: con.licenseNumber || "",
+                rating: con.rating ?? 0,
+                totalReviews: con.totalReviews ?? 0,
+                serviceCities: safeJsonArray(con.serviceCities),
+                portfolioLinks: safeJsonArray(con.portfolioLinks),
+            };
+        }
+    } else if (role === 1) {
+        // CLIENT
+        profileObj = {
+            city: rawUser.city || "",
+            state: rawUser.state || "",
+            country: rawUser.country || "",
+        };
+    }
+
+    return {
+        id: rawUser.id,
+        name: rawUser.name,
+        username: rawUser.username || null,
+        role: rawUser.role,
+        profileImageUrl: profileImageUrl || null,
+        profile: profileObj,
+    };
+}
+
+export function formatChatResponse(chat) {
+    if (!chat) return null;
+    return {
+        ...chat,
+        participants: (chat.participants || []).map((p) => ({
+            ...p,
+            user: formatParticipantUser(p.user),
+        })),
+        messages: (chat.messages || []).map((m) => ({
+            ...m,
+            sender: formatParticipantUser(m.sender),
+        })),
+    };
+}
 
 class ChatService {
     /**
@@ -19,46 +160,68 @@ class ChatService {
             where: {
                 projectId,
                 type: "DIRECT",
-                participants: {
-                    every: {
-                        userId: { in: [clientId, professionalUserId] },
-                    },
-                },
+                AND: [
+                    { participants: { some: { userId: clientId } } },
+                    { participants: { some: { userId: professionalUserId } } },
+                ],
             },
             include: {
                 participants: {
                     include: {
-                        user: { select: { id: true, name: true, profile: true, role: true } },
+                        user: { select: USER_SELECT_WITH_PROFILES },
                     },
                 },
             },
+            orderBy: { createdAt: "asc" }, // prefer oldest existing chat
         });
 
         if (!chat) {
-            chat = await prisma.chat.create({
-                data: {
-                    projectId,
-                    type: "DIRECT",
-                    bidId: bidId || undefined,
-                    title: `Direct Chat: Project ${project.title}`,
-                    participants: {
-                        create: [
-                            { userId: clientId, role: "CLIENT" },
-                            { userId: professionalUserId, role: "PROFESSIONAL" },
-                        ],
-                    },
-                },
-                include: {
-                    participants: {
-                        include: {
-                            user: { select: { id: true, name: true, profile: true, role: true } },
+            try {
+                chat = await prisma.chat.create({
+                    data: {
+                        projectId,
+                        type: "DIRECT",
+                        bidId: bidId || undefined,
+                        title: `Direct Chat: Project ${project.title}`,
+                        participants: {
+                            create: [
+                                { userId: clientId, role: "CLIENT" },
+                                { userId: professionalUserId, role: "PROFESSIONAL" },
+                            ],
                         },
                     },
-                },
-            });
+                    include: {
+                        participants: {
+                            include: {
+                                user: { select: USER_SELECT_WITH_PROFILES },
+                            },
+                        },
+                    },
+                });
+            } catch (createErr) {
+                // If concurrent request created it simultaneously, fetch the created chat
+                chat = await prisma.chat.findFirst({
+                    where: {
+                        projectId,
+                        type: "DIRECT",
+                        AND: [
+                            { participants: { some: { userId: clientId } } },
+                            { participants: { some: { userId: professionalUserId } } },
+                        ],
+                    },
+                    include: {
+                        participants: {
+                            include: {
+                                user: { select: USER_SELECT_WITH_PROFILES },
+                            },
+                        },
+                    },
+                });
+                if (!chat) throw createErr;
+            }
         }
 
-        return chat;
+        return formatChatResponse(chat);
     }
 
     /**
@@ -84,7 +247,7 @@ class ChatService {
             include: {
                 participants: {
                     include: {
-                        user: { select: { id: true, name: true, profile: true, role: true } },
+                        user: { select: USER_SELECT_WITH_PROFILES },
                     },
                 },
             },
@@ -108,7 +271,7 @@ class ChatService {
                 include: {
                     participants: {
                         include: {
-                            user: { select: { id: true, name: true, profile: true, role: true } },
+                            user: { select: USER_SELECT_WITH_PROFILES },
                         },
                     },
                 },
@@ -133,7 +296,7 @@ class ChatService {
                     include: {
                         participants: {
                             include: {
-                                user: { select: { id: true, name: true, profile: true, role: true } },
+                                user: { select: USER_SELECT_WITH_PROFILES },
                             },
                         },
                     },
@@ -141,7 +304,7 @@ class ChatService {
             }
         }
 
-        return chat;
+        return formatChatResponse(chat);
     }
 
     /**
@@ -163,9 +326,8 @@ class ChatService {
      * Send a chat message (via REST or WebSocket)
      */
     static async sendMessage(chatId, senderId, text, attachments = []) {
-        if (!text && (!attachments || attachments.length === 0)) {
-            throw new Error("Message text or attachments required");
-        }
+        // Enforce platform chat message safety & anti-disintermediation
+        ChatValidationService.validateMessage(text, attachments);
 
         const isAuthorized = await ChatService.verifyChatAccess(chatId, senderId);
         if (!isAuthorized) {
@@ -186,13 +348,7 @@ class ChatService {
             },
             include: {
                 sender: {
-                    select: {
-                        id: true,
-                        name: true,
-                        username: true,
-                        profile: true,
-                        role: true,
-                    },
+                    select: USER_SELECT_WITH_PROFILES,
                 },
             },
         });
@@ -203,7 +359,10 @@ class ChatService {
             data: { updatedAt: new Date() },
         });
 
-        return message;
+        return {
+            ...message,
+            sender: formatParticipantUser(message.sender),
+        };
     }
 
     /**
@@ -232,13 +391,7 @@ class ChatService {
                 where,
                 include: {
                     sender: {
-                        select: {
-                            id: true,
-                            name: true,
-                            username: true,
-                            profile: true,
-                            role: true,
-                        },
+                        select: USER_SELECT_WITH_PROFILES,
                     },
                 },
                 orderBy: { createdAt: "desc" },
@@ -249,7 +402,10 @@ class ChatService {
         ]);
 
         return {
-            messages: messages.reverse(), // return in chronological order
+            messages: messages.reverse().map((m) => ({
+                ...m,
+                sender: formatParticipantUser(m.sender),
+            })),
             pagination: {
                 total,
                 page: parsedPage,
@@ -335,21 +491,54 @@ class ChatService {
             include: {
                 participants: {
                     include: {
-                        user: { select: { id: true, name: true, profile: true, role: true } },
+                        user: { select: USER_SELECT_WITH_PROFILES },
                     },
                 },
                 messages: {
                     orderBy: { createdAt: "desc" },
                     take: 1,
+                    include: {
+                        sender: { select: USER_SELECT_WITH_PROFILES },
+                    },
                 },
                 _count: {
-                    select: { messages: true },
+                    select: {
+                        messages: {
+                            where: {
+                                senderId: { not: userId },
+                                isRead: false,
+                            },
+                        },
+                    },
                 },
             },
             orderBy: { updatedAt: "desc" },
         });
 
-        return chats;
+        // Deduplicate in case multiple historical direct chats were created
+        const seen = new Set();
+        const uniqueChats = [];
+        for (const c of chats) {
+            let key;
+            if (c.type === "DIRECT") {
+                const sortedParticipants = (c.participants || []).map((p) => p.userId).sort().join("_");
+                key = `${c.projectId}_DIRECT_${sortedParticipants}`;
+            } else {
+                key = `${c.projectId}_${c.type}`;
+            }
+
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueChats.push(
+                    formatChatResponse({
+                        ...c,
+                        unreadCount: c._count?.messages || 0,
+                    })
+                );
+            }
+        }
+
+        return uniqueChats;
     }
 
     /**
@@ -373,7 +562,7 @@ class ChatService {
                 participants: {
                     include: {
                         user: {
-                            select: { id: true, name: true, username: true, profile: true, role: true },
+                            select: USER_SELECT_WITH_PROFILES,
                         },
                     },
                 },
@@ -381,14 +570,48 @@ class ChatService {
                     orderBy: { createdAt: "desc" },
                     take: 1,
                     include: {
-                        sender: { select: { id: true, name: true } },
+                        sender: { select: USER_SELECT_WITH_PROFILES },
+                    },
+                },
+                _count: {
+                    select: {
+                        messages: {
+                            where: {
+                                senderId: { not: userId },
+                                isRead: false,
+                            },
+                        },
                     },
                 },
             },
             orderBy: { updatedAt: "desc" },
         });
 
-        return chats;
+        // Deduplicate in case multiple historical direct chats were created
+        const seen = new Set();
+        const uniqueChats = [];
+        for (const c of chats) {
+            let key;
+            if (c.type === "DIRECT") {
+                const other = (c.participants || []).find((p) => p.userId !== userId);
+                const otherId = other ? other.userId : c.id;
+                key = `${c.projectId}_DIRECT_${otherId}`;
+            } else {
+                key = `${c.projectId}_${c.type}`;
+            }
+
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueChats.push(
+                    formatChatResponse({
+                        ...c,
+                        unreadCount: c._count?.messages || 0,
+                    })
+                );
+            }
+        }
+
+        return uniqueChats;
     }
 }
 

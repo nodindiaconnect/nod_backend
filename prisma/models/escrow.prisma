@@ -1,0 +1,144 @@
+model ProjectEscrow {
+  id                     String                     @id @default(uuid())
+  project                Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId              String                     @unique
+
+  totalProjectValue      Float                      @default(0)
+  initialDepositRequired Float                      @default(0)
+  initialDepositPaid     Float                      @default(0)
+  remainingAmount        Float                      @default(0)
+  platformFeeRate        Float                      @default(5.0)
+  platformFeeAmount      Float                      @default(0)
+  platformFeePaid        Boolean                    @default(false)
+  escrowBalance          Float                      @default(0)
+  totalReleasedAmount    Float                      @default(0)
+  totalRefundedAmount    Float                      @default(0)
+  totalDisputedAmount    Float                      @default(0)
+
+  status                 ProjectEscrowStatus        @default(UNFUNDED)
+
+  transactions           ProjectEscrowTransaction[]
+  disputes               ProjectDispute[]
+
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model ProjectEscrowTransaction {
+  id          String                @id @default(uuid())
+  escrow      ProjectEscrow         @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId    String
+
+  type        EscrowTransactionType
+  amount      Float
+  platformFee Float                 @default(0)
+  milestoneId String?
+  userId      String?
+  user        User?                 @relation(fields: [userId], references: [id])
+  description String?
+  referenceId String?
+  status      String                @default("COMPLETED")
+
+  createdAt   DateTime              @default(now())
+
+  @@index([escrowId])
+  @@index([type])
+  @@index([userId])
+}
+
+model ProjectDispute {
+  id                 String        @id @default(uuid())
+  escrow             ProjectEscrow @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId           String
+  milestoneId        String?
+
+  raisedBy           User          @relation("DisputesRaised", fields: [raisedById], references: [id])
+  raisedById         String
+  raisedByRole       String
+
+  reason             String
+  description        String?
+  evidenceUrls       String[]      @default([])
+  disputedAmount     Float         @default(0)
+
+  status             DisputeStatus @default(OPEN)
+
+  adminDecision      String?
+  adminNotes         String?
+  resolvedBy         User?         @relation("DisputesResolved", fields: [resolvedById], references: [id])
+  resolvedById       String?
+  refundAmountClient Float         @default(0)
+  releaseAmountPro   Float         @default(0)
+
+  resolvedAt         DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([escrowId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model PlatformRevenue {
+  id          String   @id @default(uuid())
+  projectId   String?
+  escrowId    String?
+  amount      Float
+  source      String   @default("PROJECT_PLATFORM_FEE")
+  description String?
+  referenceId String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}
+
+model Invoice {
+  id                  String   @id @default(uuid())
+  invoiceNumber       String   @unique
+  projectId           String
+  clientId            String
+  clientName          String?
+  clientEmail         String?
+  clientPhone         String?
+  milestoneId         String?
+  milestoneSequence   Int      @default(1)
+  milestoneTitle      String
+  milestonePercentage Float    @default(50.0)
+  totalProjectValue   Float
+  milestoneAmount     Float
+  platformFeeRate     Float    @default(5.0)
+  platformFeeAmount   Float    @default(0)
+  totalAmountPaid     Float
+  remainingAmount     Float    @default(0)
+  transactionId       String?
+  paymentGateway      String   @default("DUMMY")
+  status              String   @default("PAID")
+  pdfUrl              String?
+  notes               String?
+  metadata            Json?
+  paidAt              DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([clientId])
+  @@index([invoiceNumber])
+  @@index([createdAt])
+}

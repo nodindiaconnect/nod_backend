@@ -8,10 +8,12 @@ let router = Router();
 
 router.get("/userDetails", Auth, ArchitechController.getUserDetails);
 
+router.get("/me/profile", Auth, ArchitechController.getMyProfile);
+router.patch("/me/profile", Auth, ArchitechController.editMyProfile);
 
-router.get("/me/overview", Auth,ArchitechController.getOverview)
-router.get("/me/quotations",Auth, ArchitechController.getQuotations)
-router.post("/quotations",Auth, ArchitechController.sendQuotation)
-router.patch("/quotations/:bidId/withdraw",Auth, ArchitechController.withdrawQuotation)
-router.get("/me/projects",Auth, ArchitechController.getProjectsToBid)
+router.get("/me/overview", Auth, ArchitechController.getOverview);
+router.get("/me/quotations", Auth, ArchitechController.getQuotations);
+router.post("/quotations", Auth, ArchitechController.sendQuotation);
+router.patch("/quotations/:bidId/withdraw", Auth, ArchitechController.withdrawQuotation);
+router.get("/me/projects", Auth, ArchitechController.getProjectsToBid);
 export default router;

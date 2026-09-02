@@ -11,6 +11,9 @@ model Bid {
   portfolioLink    String?
   role             ServiceType?
 
+  professional   User?   @relation("ProfessionalBids", fields: [professionalId], references: [id], onDelete: SetNull)
+  professionalId String?
+
   designer   Designer?   @relation(fields: [designerId], references: [id], onDelete: Cascade)
   designerId String?
 
@@ -24,7 +27,9 @@ model Bid {
   isShortlisted   Boolean     @default(false)
   validUntil      DateTime?
   rejectionReason String?
+  version         Int         @default(1)
 
+  award       Award?
   projectTeam ProjectTeam?
   chats       Chat[]
 
@@ -33,8 +38,10 @@ model Bid {
 
   @@index([projectId])
   @@index([status])
+  @@index([professionalId])
   @@index([designerId])
   @@index([architectId])
   @@index([contractorId])
 }
+
 
