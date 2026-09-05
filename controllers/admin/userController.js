@@ -88,32 +88,63 @@ class UserController {
   }
 
 
-  // Get Designers (role 2) — paginated + searchable
+  // Get Designers (role 2) — paginated + searchable + filterable by category & specialization
   static async getDesignerUsers(req, res) {
     try {
       const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
       const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
       const skip = (page - 1) * limit;
       const search = (req.query.search || "").trim();
+      const category = (req.query.category || "").trim();
+      const specialization = (req.query.specialization || "").trim();
 
       const where = {
         role: 2,
         isDeleted: false,
       };
 
+      const andConditions = [];
+
       if (search) {
-        where.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { username: { contains: search, mode: "insensitive" } },
-          { email: { contains: search, mode: "insensitive" } },
-          { phone: { contains: search, mode: "insensitive" } },
-          { city: { contains: search, mode: "insensitive" } },
-        ];
+        andConditions.push({
+          OR: [
+            { name: { contains: search, mode: "insensitive" } },
+            { username: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+            { phone: { contains: search, mode: "insensitive" } },
+            { city: { contains: search, mode: "insensitive" } },
+          ],
+        });
+      }
+
+      if (category) {
+        andConditions.push({
+          OR: [
+            { category: { equals: category, mode: "insensitive" } },
+            { designer: { category: { equals: category, mode: "insensitive" } } },
+          ],
+        });
+      }
+
+      if (specialization) {
+        andConditions.push({
+          OR: [
+            { specialization: { equals: specialization, mode: "insensitive" } },
+            { designer: { specializations: { has: specialization } } },
+          ],
+        });
+      }
+
+      if (andConditions.length > 0) {
+        where.AND = andConditions;
       }
 
       const [users, total, blocked] = await Promise.all([
         prisma.user.findMany({
           where,
+          include: {
+            designer: true,
+          },
           orderBy: { createdAt: "desc" },
           skip,
           take: limit,
@@ -132,9 +163,27 @@ class UserController {
           isVerified,
           isRegistered,
           role,
+          designer,
           ...rest
         } = user;
-        return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
+
+        const resolvedCategory = user.category || designer?.category || "N/A";
+        const resolvedSpecialization =
+          user.specialization ||
+          (designer?.specializations && designer.specializations.length > 0
+            ? designer.specializations.join(", ")
+            : "N/A");
+
+        return {
+          ...rest,
+          category: resolvedCategory,
+          specialization: resolvedSpecialization,
+          specializations:
+            designer?.specializations ||
+            (user.specialization ? [user.specialization] : []),
+          designerDetails: designer || null,
+          role: ACCOUNT_TYPE_NAMES[role] || role,
+        };
       });
 
       return res.status(200).json({
