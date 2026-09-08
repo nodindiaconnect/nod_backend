@@ -192,17 +192,42 @@ function formatPortfolioUser(user) {
     profile: unifiedProfile,
     createdAt: user.createdAt,
     registeredDate: user.registeredDate,
-    posts: user.posts || [],
+    posts: (() => {
+      let userPosts = user.posts || [];
+      if (roleNum === 5 && Array.isArray(user.products) && user.products.length > 0) {
+        const productPosts = user.products.map((p) => ({
+          id: p.id,
+          title: p.productName,
+          description: p.description || `${p.category || "Material"} - ₹${p.price}/${p.unit}`,
+          images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.thumbnail ? [p.thumbnail] : []),
+          createdAt: p.createdAt,
+          price: p.price,
+          discountPrice: p.discountPrice,
+          unit: p.unit,
+          category: p.category,
+          subCategory: p.subCategory,
+          brand: p.brand,
+          material: p.material,
+          stock: p.stock,
+          availability: p.availability,
+          isProduct: true,
+        }));
+        userPosts = userPosts.length > 0 ? [...userPosts, ...productPosts] : productPosts;
+      }
+      return userPosts;
+    })(),
     followers: user.followers || [],
     designer: user.designer || null,
     architect: user.architect || null,
     contractor: user.contractor || null,
     contactDetails: user.contactDetails || null,
-    _count: user._count || {
-      posts: user.posts?.length || 0,
+    products: user.products || [],
+    _count: {
+      posts: (user.posts?.length || 0) + (roleNum === 5 && user.products ? user.products.length : 0),
       followers: user.followers?.length || 0,
       following: 0,
-      products: 0,
+      products: user.products?.length || user._count?.products || 0,
+      ...(user._count || {}),
     },
   };
 }
@@ -291,6 +316,29 @@ const PORTFOLIO_SELECT_FIELDS = {
       title: true,
       description: true,
       images: true,
+      createdAt: true,
+    },
+  },
+  products: {
+    where: { status: "Active" },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      productName: true,
+      category: true,
+      subCategory: true,
+      brand: true,
+      unit: true,
+      price: true,
+      discountPrice: true,
+      stock: true,
+      images: true,
+      thumbnail: true,
+      material: true,
+      color: true,
+      description: true,
+      availability: true,
+      status: true,
       createdAt: true,
     },
   },
@@ -477,14 +525,55 @@ class PostController {
         return helper.failed(res, "User ID is required");
       }
 
-      const posts = await prisma.post.findMany({
+      let posts = await prisma.post.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
       });
 
-      const totalCount = await prisma.post.count({ where: { userId } });
+      let totalCount = await prisma.post.count({ where: { userId } });
+
+      if (totalCount === 0) {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { role: true },
+        });
+        const roleNum = typeof user?.role === "string" ? parseInt(user.role, 10) : user?.role;
+        if (roleNum === 5) {
+          const [products, productCount] = await Promise.all([
+            prisma.product.findMany({
+              where: { supplierId: userId, status: "Active" },
+              orderBy: { createdAt: "desc" },
+              skip: (page - 1) * limit,
+              take: limit,
+            }),
+            prisma.product.count({
+              where: { supplierId: userId, status: "Active" },
+            }),
+          ]);
+
+          posts = products.map((p) => ({
+            id: p.id,
+            title: p.productName,
+            description: p.description || `${p.category || "Material"} - ₹${p.price}/${p.unit}`,
+            images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.thumbnail ? [p.thumbnail] : []),
+            createdAt: p.createdAt,
+            price: p.price,
+            discountPrice: p.discountPrice,
+            unit: p.unit,
+            category: p.category,
+            subCategory: p.subCategory,
+            brand: p.brand,
+            material: p.material,
+            stock: p.stock,
+            availability: p.availability,
+            isProduct: true,
+          }));
+          totalCount = productCount;
+        }
+      }
+
       const totalPages = Math.ceil(totalCount / limit) || 1;
 
       return helper.success(res, "Posts fetched successfully", {
@@ -521,10 +610,11 @@ class PostController {
       }
 
       const user = formatPortfolioUser(rawUser);
+      const finalPosts = posts && posts.length > 0 ? posts : user.posts || [];
 
       return helper.success(res, "Portfolio fetched successfully", {
-        data: posts,
-        posts,
+        data: finalPosts,
+        posts: finalPosts,
         user,
       });
     } catch (error) {

@@ -484,6 +484,10 @@ class ArchitechController {
         image ||
         undefined;
 
+      if (bio !== undefined && bio !== null && /\d/.test(String(bio))) {
+        return helper.failed(res, "Bio cannot contain numbers");
+      }
+
       const updated = await prisma.$transaction(async (tx) => {
         const updatedUser = await tx.user.update({
           where: { id: userId },

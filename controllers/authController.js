@@ -69,19 +69,92 @@ const GENERIC_SESSION_FAIL = "This session has expired. Please start again.";
 const GENERIC_SERVER_ERROR = "Something went wrong. Please try again later.";
 const CAPTCHA_FAIL_MESSAGE = "Captcha verification failed. Please try again.";
 
-// authController.js — add near ACCOUNT_TYPES
+// Currency mapping by dial code / country
+const CURRENCY_MAP = {
+  "91": { currency: "INR", symbol: "₹", name: "Indian Rupee", country: "India" },
+  "1": { currency: "USD", symbol: "$", name: "US Dollar", country: "United States" },
+  "44": { currency: "GBP", symbol: "£", name: "British Pound", country: "United Kingdom" },
+  "971": { currency: "AED", symbol: "AED", name: "UAE Dirham", country: "United Arab Emirates" },
+  "966": { currency: "SAR", symbol: "SAR", name: "Saudi Riyal", country: "Saudi Arabia" },
+  "61": { currency: "AUD", symbol: "A$", name: "Australian Dollar", country: "Australia" },
+  "64": { currency: "NZD", symbol: "NZ$", name: "New Zealand Dollar", country: "New Zealand" },
+  "65": { currency: "SGD", symbol: "S$", name: "Singapore Dollar", country: "Singapore" },
+  "49": { currency: "EUR", symbol: "€", name: "Euro", country: "Germany" },
+  "33": { currency: "EUR", symbol: "€", name: "Euro", country: "France" },
+  "39": { currency: "EUR", symbol: "€", name: "Euro", country: "Italy" },
+  "34": { currency: "EUR", symbol: "€", name: "Euro", country: "Spain" },
+  "31": { currency: "EUR", symbol: "€", name: "Euro", country: "Netherlands" },
+  "41": { currency: "CHF", symbol: "CHF", name: "Swiss Franc", country: "Switzerland" },
+  "81": { currency: "JPY", symbol: "¥", name: "Japanese Yen", country: "Japan" },
+  "86": { currency: "CNY", symbol: "¥", name: "Chinese Yuan", country: "China" },
+  "82": { currency: "KRW", symbol: "₩", name: "South Korean Won", country: "South Korea" },
+  "974": { currency: "QAR", symbol: "QAR", name: "Qatari Riyal", country: "Qatar" },
+  "965": { currency: "KWD", symbol: "KWD", name: "Kuwaiti Dinar", country: "Kuwait" },
+  "968": { currency: "OMR", symbol: "OMR", name: "Omani Rial", country: "Oman" },
+  "973": { currency: "BHD", symbol: "BHD", name: "Bahraini Dinar", country: "Bahrain" },
+  "60": { currency: "MYR", symbol: "RM", name: "Malaysian Ringgit", country: "Malaysia" },
+  "62": { currency: "IDR", symbol: "Rp", name: "Indonesian Rupiah", country: "Indonesia" },
+  "63": { currency: "PHP", symbol: "₱", name: "Philippine Peso", country: "Philippines" },
+  "66": { currency: "THB", symbol: "฿", name: "Thai Baht", country: "Thailand" },
+  "84": { currency: "VND", symbol: "₫", name: "Vietnamese Dong", country: "Vietnam" },
+  "880": { currency: "BDT", symbol: "৳", name: "Bangladeshi Taka", country: "Bangladesh" },
+  "94": { currency: "LKR", symbol: "Rs", name: "Sri Lankan Rupee", country: "Sri Lanka" },
+  "977": { currency: "NPR", symbol: "Rs", name: "Nepalese Rupee", country: "Nepal" },
+  "27": { currency: "ZAR", symbol: "R", name: "South African Rand", country: "South Africa" },
+  "234": { currency: "NGN", symbol: "₦", name: "Nigerian Naira", country: "Nigeria" },
+  "254": { currency: "KES", symbol: "KSh", name: "Kenyan Shilling", country: "Kenya" },
+  "20": { currency: "EGP", symbol: "E£", name: "Egyptian Pound", country: "Egypt" },
+  "55": { currency: "BRL", symbol: "R$", name: "Brazilian Real", country: "Brazil" },
+  "52": { currency: "MXN", symbol: "Mex$", name: "Mexican Peso", country: "Mexico" },
+  "46": { currency: "SEK", symbol: "kr", name: "Swedish Krona", country: "Sweden" },
+  "47": { currency: "NOK", symbol: "kr", name: "Norwegian Krone", country: "Norway" },
+  "45": { currency: "DKK", symbol: "kr", name: "Danish Krone", country: "Denmark" },
+  "48": { currency: "PLN", symbol: "zł", name: "Polish Zloty", country: "Poland" },
+  "90": { currency: "TRY", symbol: "₺", name: "Turkish Lira", country: "Turkey" },
+  "7": { currency: "RUB", symbol: "₽", name: "Russian Ruble", country: "Russia" },
+};
+
+function resolveCurrency(phoneCode, country) {
+  const cleanCode = String(phoneCode || "").replace(/[^\d]/g, "").trim();
+  const cleanCountry = String(country || "").trim().toLowerCase();
+
+  if (cleanCountry === "canada" || cleanCountry === "ca") {
+    return { currency: "CAD", symbol: "CA$", name: "Canadian Dollar", country: "Canada", phoneCode: "+1" };
+  }
+  if (cleanCountry === "india" || cleanCountry === "in") {
+    return { currency: "INR", symbol: "₹", name: "Indian Rupee", country: "India", phoneCode: "+91" };
+  }
+  if (cleanCountry === "united states" || cleanCountry === "usa" || cleanCountry === "us") {
+    return { currency: "USD", symbol: "$", name: "US Dollar", country: "United States", phoneCode: "+1" };
+  }
+  if (cleanCountry === "united kingdom" || cleanCountry === "uk" || cleanCountry === "gb") {
+    return { currency: "GBP", symbol: "£", name: "British Pound", country: "United Kingdom", phoneCode: "+44" };
+  }
+  if (cleanCountry === "united arab emirates" || cleanCountry === "uae" || cleanCountry === "ae") {
+    return { currency: "AED", symbol: "AED", name: "UAE Dirham", country: "United Arab Emirates", phoneCode: "+971" };
+  }
+
+  if (cleanCode && CURRENCY_MAP[cleanCode]) {
+    return { ...CURRENCY_MAP[cleanCode], phoneCode: `+${cleanCode}` };
+  }
+
+  return { currency: "INR", symbol: "₹", name: "Indian Rupee", country: "India", phoneCode: "+91" };
+}
 
 // Mirrors the frontend's ROLE_FIELDS (authShared.js) so profile data
 // submitted at register/create-account is validated server-side too.
-// Keys are the numeric role codes from ACCOUNT_TYPES, since by this
-// step the user's role is already fixed in the DB — we validate
-// against what they registered as, not anything the client claims.
 const ROLE_FIELD_SCHEMAS = {
   [ACCOUNT_TYPES.Client]: [],
   [ACCOUNT_TYPES.Designer]: [
     { id: "bio", type: "textarea", required: false, max: 1000 },
     { id: "category", type: "category", required: true },
     { id: "specialization", type: "specialization", required: true },
+    {
+      id: "specializationLevel",
+      type: "select",
+      required: false,
+      options: ["Beginner", "Intermediate", "Professional"],
+    },
     {
       id: "style",
       type: "select",
@@ -97,6 +170,7 @@ const ROLE_FIELD_SCHEMAS = {
     },
     { id: "experience", type: "number", required: false, min: 0, max: 80 },
     { id: "rate", type: "number", required: false, min: 0, max: 100000 },
+    { id: "currency", type: "text", required: false, max: 10 },
   ],
   [ACCOUNT_TYPES.Architect]: [
     { id: "bio", type: "textarea", required: false, max: 1000 },
@@ -113,12 +187,20 @@ const ROLE_FIELD_SCHEMAS = {
       ],
     },
     {
+      id: "specializationLevel",
+      type: "select",
+      required: false,
+      options: ["Beginner", "Intermediate", "Professional"],
+    },
+    {
       id: "software",
       type: "select",
       required: false,
       options: ["AutoCAD", "Revit", "ArchiCAD", "SketchUp", "Rhino"],
     },
     { id: "experience", type: "number", required: false, min: 0, max: 80 },
+    { id: "rate", type: "number", required: false, min: 0, max: 100000 },
+    { id: "currency", type: "text", required: false, max: 10 },
   ],
   [ACCOUNT_TYPES.Contractor]: [
     { id: "bio", type: "textarea", required: false, max: 1000 },
@@ -259,6 +341,9 @@ async function validateRoleFields(roleCode, roleFields) {
       if (typeof raw !== "string")
         return { ok: false, message: `${field.id} must be text.` };
       const trimmed = sanitizeData(raw.trim());
+      if (field.id === "bio" && /\d/.test(trimmed)) {
+        return { ok: false, message: "Bio cannot contain numbers." };
+      }
       if (field.max && trimmed.length > field.max)
         return { ok: false, message: `${field.id} is too long.` };
       cleaned[field.id] = trimmed;
@@ -756,6 +841,12 @@ class authController {
       if (hasRoleFields) {
         validation = await validateRoleFields(user.role, roleFields);
         if (!validation.ok) return helper.failed(res, validation.message);
+
+        // Auto-assign currency if rate is provided
+        if (validation.cleaned.rate !== undefined && !validation.cleaned.currency) {
+          const resolved = resolveCurrency(user.countryCode, country || user.country);
+          validation.cleaned.currency = resolved.currency;
+        }
       }
 
       await prisma.user.update({
@@ -1265,6 +1356,7 @@ class authController {
       const updatedUser = await prisma.user.findUnique({
         where: { id: findUser.id },
         select: {
+          id: true,
           name: true,
           email: true,
           role: true,
@@ -1556,6 +1648,18 @@ class authController {
       return res
         .status(500)
         .json({ available: false, message: "Could not check username" });
+    }
+  }
+
+  // ── GET CURRENCY ─────────────────────────────────────────────────────
+  static async getCurrency(req, res) {
+    try {
+      const { phoneCode, country } = req.query;
+      const data = resolveCurrency(phoneCode, country);
+      return helper.success(res, "Currency resolved successfully", data);
+    } catch (err) {
+      console.error("getCurrency error:", err);
+      return helper.failed(res, "Could not resolve currency");
     }
   }
 }

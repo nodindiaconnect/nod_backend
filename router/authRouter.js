@@ -51,5 +51,6 @@ router.post("/reCAPTCHAVerify", rateLimiter, AuthController.verifyCaptcha);
 router.post("/logout", Auth, AuthController.logout);
 router.get("/refreshToken", AuthController.refreshToken);
 router.get("/CheckUserName", AuthController.checkUsername);
+router.get("/currency", AuthController.getCurrency);
 
 export default router;

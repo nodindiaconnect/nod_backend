@@ -112097,12 +112097,11 @@ var init_chatValidationService = __esm({
        */
       static validateMessage(text = "", attachments = []) {
         const rawText = typeof text === "string" ? text.trim() : "";
-        const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
-        if (!rawText && !hasAttachments) {
-          throw new Error("Message cannot be empty. Please provide text or an attachment.");
+        if (Array.isArray(attachments) && attachments.length > 0) {
+          throw new Error("File attachments are disabled in chat.");
         }
-        if (!rawText && hasAttachments) {
-          return { isValid: true, sanitizedText: "" };
+        if (!rawText) {
+          throw new Error("Message cannot be empty. Please enter your message.");
         }
         const numericOnlyRegex = /^[\d\s.,\-–—_/\\#+*()%$@!?:;'"~`^&=[\]{}|<>]+$/;
         if (numericOnlyRegex.test(rawText)) {
@@ -112111,6 +112110,19 @@ var init_chatValidationService = __esm({
         const alphaMatch = rawText.match(/[a-zA-Z]/g);
         if (!alphaMatch || alphaMatch.length < 2) {
           throw new Error("Please write a descriptive message with valid text.");
+        }
+        const urlPatterns = [
+          /https?:\/\/[^\s]+/i,
+          /www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*/i,
+          /\b[a-zA-Z0-9][-a-zA-Z0-9]*\.(?:com|in|org|net|co|io|ai|app|biz|info|xyz|site|online|tech|store|dev|me|club|live|link|pro|top|vip|us|uk|ca|au|de|fr|jp|ru|cn|tv|cc|to|space|fun|cloud|gov|edu)(?:\/[^\s]*)?\b/i,
+          /\b(?:bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly|is\.gd|buff\.ly|adf\.ly|bitly\.com)\b/i,
+          /(?:https?|ftp)\s*:\s*\/\s*\//i,
+          /[a-zA-Z0-9-]+\s*\.\s*(?:com|in|org|net|co|io|ai|app|xyz|site|online|tech|dev)\b/i
+        ];
+        for (const pattern of urlPatterns) {
+          if (pattern.test(rawText)) {
+            throw new Error("Sharing website links or external URLs in chat is restricted for platform safety.");
+          }
         }
         const standardEmailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
         const obfuscatedEmailRegex = /[a-zA-Z0-9._%+-]+\s*(?:@|\[at\]|\(at\)|at)\s*[a-zA-Z0-9.-]+\s*(?:\.|\bdot\b|\[dot\]|\(dot\))\s*(?:com|in|org|net|co|io|ai|me|info|biz)/i;
@@ -203682,7 +203694,7 @@ var emailService = class {
 };
 var emailService_default = emailService;
 
-// helper/sessionStore.js
+// helper/Sessionstore.js
 var import_crypto3 = __toESM(require("crypto"), 1);
 init_prismaClient();
 var SESSION_TTL_MS = {
@@ -203752,7 +203764,7 @@ var sessionStore = {
     });
   }
 };
-var sessionStore_default = sessionStore;
+var Sessionstore_default = sessionStore;
 
 // controllers/authController.js
 init_sanitizeHtml();
@@ -203819,12 +203831,84 @@ var GENERIC_OTP_FAIL = "Invalid or expired OTP.";
 var GENERIC_SESSION_FAIL = "This session has expired. Please start again.";
 var GENERIC_SERVER_ERROR = "Something went wrong. Please try again later.";
 var CAPTCHA_FAIL_MESSAGE = "Captcha verification failed. Please try again.";
+var CURRENCY_MAP = {
+  "91": { currency: "INR", symbol: "\u20B9", name: "Indian Rupee", country: "India" },
+  "1": { currency: "USD", symbol: "$", name: "US Dollar", country: "United States" },
+  "44": { currency: "GBP", symbol: "\xA3", name: "British Pound", country: "United Kingdom" },
+  "971": { currency: "AED", symbol: "AED", name: "UAE Dirham", country: "United Arab Emirates" },
+  "966": { currency: "SAR", symbol: "SAR", name: "Saudi Riyal", country: "Saudi Arabia" },
+  "61": { currency: "AUD", symbol: "A$", name: "Australian Dollar", country: "Australia" },
+  "64": { currency: "NZD", symbol: "NZ$", name: "New Zealand Dollar", country: "New Zealand" },
+  "65": { currency: "SGD", symbol: "S$", name: "Singapore Dollar", country: "Singapore" },
+  "49": { currency: "EUR", symbol: "\u20AC", name: "Euro", country: "Germany" },
+  "33": { currency: "EUR", symbol: "\u20AC", name: "Euro", country: "France" },
+  "39": { currency: "EUR", symbol: "\u20AC", name: "Euro", country: "Italy" },
+  "34": { currency: "EUR", symbol: "\u20AC", name: "Euro", country: "Spain" },
+  "31": { currency: "EUR", symbol: "\u20AC", name: "Euro", country: "Netherlands" },
+  "41": { currency: "CHF", symbol: "CHF", name: "Swiss Franc", country: "Switzerland" },
+  "81": { currency: "JPY", symbol: "\xA5", name: "Japanese Yen", country: "Japan" },
+  "86": { currency: "CNY", symbol: "\xA5", name: "Chinese Yuan", country: "China" },
+  "82": { currency: "KRW", symbol: "\u20A9", name: "South Korean Won", country: "South Korea" },
+  "974": { currency: "QAR", symbol: "QAR", name: "Qatari Riyal", country: "Qatar" },
+  "965": { currency: "KWD", symbol: "KWD", name: "Kuwaiti Dinar", country: "Kuwait" },
+  "968": { currency: "OMR", symbol: "OMR", name: "Omani Rial", country: "Oman" },
+  "973": { currency: "BHD", symbol: "BHD", name: "Bahraini Dinar", country: "Bahrain" },
+  "60": { currency: "MYR", symbol: "RM", name: "Malaysian Ringgit", country: "Malaysia" },
+  "62": { currency: "IDR", symbol: "Rp", name: "Indonesian Rupiah", country: "Indonesia" },
+  "63": { currency: "PHP", symbol: "\u20B1", name: "Philippine Peso", country: "Philippines" },
+  "66": { currency: "THB", symbol: "\u0E3F", name: "Thai Baht", country: "Thailand" },
+  "84": { currency: "VND", symbol: "\u20AB", name: "Vietnamese Dong", country: "Vietnam" },
+  "880": { currency: "BDT", symbol: "\u09F3", name: "Bangladeshi Taka", country: "Bangladesh" },
+  "94": { currency: "LKR", symbol: "Rs", name: "Sri Lankan Rupee", country: "Sri Lanka" },
+  "977": { currency: "NPR", symbol: "Rs", name: "Nepalese Rupee", country: "Nepal" },
+  "27": { currency: "ZAR", symbol: "R", name: "South African Rand", country: "South Africa" },
+  "234": { currency: "NGN", symbol: "\u20A6", name: "Nigerian Naira", country: "Nigeria" },
+  "254": { currency: "KES", symbol: "KSh", name: "Kenyan Shilling", country: "Kenya" },
+  "20": { currency: "EGP", symbol: "E\xA3", name: "Egyptian Pound", country: "Egypt" },
+  "55": { currency: "BRL", symbol: "R$", name: "Brazilian Real", country: "Brazil" },
+  "52": { currency: "MXN", symbol: "Mex$", name: "Mexican Peso", country: "Mexico" },
+  "46": { currency: "SEK", symbol: "kr", name: "Swedish Krona", country: "Sweden" },
+  "47": { currency: "NOK", symbol: "kr", name: "Norwegian Krone", country: "Norway" },
+  "45": { currency: "DKK", symbol: "kr", name: "Danish Krone", country: "Denmark" },
+  "48": { currency: "PLN", symbol: "z\u0142", name: "Polish Zloty", country: "Poland" },
+  "90": { currency: "TRY", symbol: "\u20BA", name: "Turkish Lira", country: "Turkey" },
+  "7": { currency: "RUB", symbol: "\u20BD", name: "Russian Ruble", country: "Russia" }
+};
+function resolveCurrency(phoneCode, country) {
+  const cleanCode = String(phoneCode || "").replace(/[^\d]/g, "").trim();
+  const cleanCountry = String(country || "").trim().toLowerCase();
+  if (cleanCountry === "canada" || cleanCountry === "ca") {
+    return { currency: "CAD", symbol: "CA$", name: "Canadian Dollar", country: "Canada", phoneCode: "+1" };
+  }
+  if (cleanCountry === "india" || cleanCountry === "in") {
+    return { currency: "INR", symbol: "\u20B9", name: "Indian Rupee", country: "India", phoneCode: "+91" };
+  }
+  if (cleanCountry === "united states" || cleanCountry === "usa" || cleanCountry === "us") {
+    return { currency: "USD", symbol: "$", name: "US Dollar", country: "United States", phoneCode: "+1" };
+  }
+  if (cleanCountry === "united kingdom" || cleanCountry === "uk" || cleanCountry === "gb") {
+    return { currency: "GBP", symbol: "\xA3", name: "British Pound", country: "United Kingdom", phoneCode: "+44" };
+  }
+  if (cleanCountry === "united arab emirates" || cleanCountry === "uae" || cleanCountry === "ae") {
+    return { currency: "AED", symbol: "AED", name: "UAE Dirham", country: "United Arab Emirates", phoneCode: "+971" };
+  }
+  if (cleanCode && CURRENCY_MAP[cleanCode]) {
+    return { ...CURRENCY_MAP[cleanCode], phoneCode: `+${cleanCode}` };
+  }
+  return { currency: "INR", symbol: "\u20B9", name: "Indian Rupee", country: "India", phoneCode: "+91" };
+}
 var ROLE_FIELD_SCHEMAS = {
   [ACCOUNT_TYPES.Client]: [],
   [ACCOUNT_TYPES.Designer]: [
     { id: "bio", type: "textarea", required: false, max: 1e3 },
     { id: "category", type: "category", required: true },
     { id: "specialization", type: "specialization", required: true },
+    {
+      id: "specializationLevel",
+      type: "select",
+      required: false,
+      options: ["Beginner", "Intermediate", "Professional"]
+    },
     {
       id: "style",
       type: "select",
@@ -203839,7 +203923,8 @@ var ROLE_FIELD_SCHEMAS = {
       ]
     },
     { id: "experience", type: "number", required: false, min: 0, max: 80 },
-    { id: "rate", type: "number", required: false, min: 0, max: 1e5 }
+    { id: "rate", type: "number", required: false, min: 0, max: 1e5 },
+    { id: "currency", type: "text", required: false, max: 10 }
   ],
   [ACCOUNT_TYPES.Architect]: [
     { id: "bio", type: "textarea", required: false, max: 1e3 },
@@ -203856,12 +203941,20 @@ var ROLE_FIELD_SCHEMAS = {
       ]
     },
     {
+      id: "specializationLevel",
+      type: "select",
+      required: false,
+      options: ["Beginner", "Intermediate", "Professional"]
+    },
+    {
       id: "software",
       type: "select",
       required: false,
       options: ["AutoCAD", "Revit", "ArchiCAD", "SketchUp", "Rhino"]
     },
-    { id: "experience", type: "number", required: false, min: 0, max: 80 }
+    { id: "experience", type: "number", required: false, min: 0, max: 80 },
+    { id: "rate", type: "number", required: false, min: 0, max: 1e5 },
+    { id: "currency", type: "text", required: false, max: 10 }
   ],
   [ACCOUNT_TYPES.Contractor]: [
     { id: "bio", type: "textarea", required: false, max: 1e3 },
@@ -203983,6 +204076,9 @@ async function validateRoleFields(roleCode, roleFields) {
       if (typeof raw2 !== "string")
         return { ok: false, message: `${field.id} must be text.` };
       const trimmed = sanitizeHtml_default(raw2.trim());
+      if (field.id === "bio" && /\d/.test(trimmed)) {
+        return { ok: false, message: "Bio cannot contain numbers." };
+      }
       if (field.max && trimmed.length > field.max)
         return { ok: false, message: `${field.id} is too long.` };
       cleaned[field.id] = trimmed;
@@ -204277,7 +204373,7 @@ var authController = class {
         console.error("Failed to send registration OTP email:", error2);
       });
       console.log("Creating registration session...");
-      const session = await sessionStore_default.create({
+      const session = await Sessionstore_default.create({
         type: "register",
         email,
         userId: user.id,
@@ -204308,14 +204404,14 @@ var authController = class {
       if (otp === void 0 || otp === null || Number.isNaN(Number(otp))) {
         return helper_default.failed(res, GENERIC_OTP_FAIL);
       }
-      const session = await sessionStore_default.get(registerSessionToken, "register");
+      const session = await Sessionstore_default.get(registerSessionToken, "register");
       if (!session || !session.userId)
         return helper_default.failed(res, GENERIC_SESSION_FAIL);
       console.log(session, "session12334");
       const result = await verifyStoredOtp(session.userId, "register", otp);
       if (!result.ok) {
         if (result.reason === "locked") {
-          await sessionStore_default.destroy(session.id);
+          await Sessionstore_default.destroy(session.id);
           return helper_default.failed(
             res,
             "Too many incorrect attempts. Please request a new code."
@@ -204327,7 +204423,7 @@ var authController = class {
         where: { id: session.userId },
         data: { isVerified: true }
       });
-      await sessionStore_default.advance(session.id, { step: "verified" });
+      await Sessionstore_default.advance(session.id, { step: "verified" });
       return helper_default.success(res, "Email verified.", { registerSessionToken });
     } catch (error2) {
       console.error(error2);
@@ -204351,7 +204447,7 @@ var authController = class {
         return helper_default.failed(res, "Please enter a valid city.");
       if (!isValidText(address, { max: 500 }))
         return helper_default.failed(res, "Please enter a valid address.");
-      const session = await sessionStore_default.get(registerSessionToken, "register");
+      const session = await Sessionstore_default.get(registerSessionToken, "register");
       if (!session || !session.userId)
         return helper_default.failed(res, GENERIC_SESSION_FAIL);
       if (session.step !== "verified" && session.step !== "profile_complete") {
@@ -204368,6 +204464,10 @@ var authController = class {
       if (hasRoleFields) {
         validation2 = await validateRoleFields(user.role, roleFields);
         if (!validation2.ok) return helper_default.failed(res, validation2.message);
+        if (validation2.cleaned.rate !== void 0 && !validation2.cleaned.currency) {
+          const resolved = resolveCurrency(user.countryCode, country || user.country);
+          validation2.cleaned.currency = resolved.currency;
+        }
       }
       await prismaClient_default.user.update({
         where: { id: session.userId },
@@ -204495,7 +204595,7 @@ var authController = class {
           });
         }
       }
-      await sessionStore_default.advance(session.id, { step: "profile_complete" });
+      await Sessionstore_default.advance(session.id, { step: "profile_complete" });
       return helper_default.success(res, "Account details saved.", {
         registerSessionToken
       });
@@ -204509,7 +204609,7 @@ var authController = class {
   static async registerFinish(req, res) {
     try {
       const { registerSessionToken } = req.body;
-      const session = await sessionStore_default.get(registerSessionToken, "register");
+      const session = await Sessionstore_default.get(registerSessionToken, "register");
       if (!session || !session.userId)
         return helper_default.failed(res, GENERIC_SESSION_FAIL);
       if (session.step !== "profile_complete")
@@ -204548,7 +204648,7 @@ var authController = class {
         },
         process.env.JWT_SK
       );
-      await sessionStore_default.destroy(session.id);
+      await Sessionstore_default.destroy(session.id);
       const updatedUser = await prismaClient_default.user.findUnique({
         where: { id: user.id }
       });
@@ -204572,7 +204672,7 @@ var authController = class {
     try {
       const { registerSessionToken, forgotSessionToken } = req.body;
       if (registerSessionToken) {
-        const session = await sessionStore_default.get(
+        const session = await Sessionstore_default.get(
           registerSessionToken,
           "register"
         );
@@ -204589,7 +204689,7 @@ var authController = class {
         return helper_default.success(res, GENERIC_RESEND_MESSAGE, {});
       }
       if (forgotSessionToken) {
-        const session = await sessionStore_default.get(forgotSessionToken, "forgot");
+        const session = await Sessionstore_default.get(forgotSessionToken, "forgot");
         if (!session || !session.userId) {
           return helper_default.success(res, GENERIC_RESEND_MESSAGE, {});
         }
@@ -204620,7 +204720,7 @@ var authController = class {
       const user = await prismaClient_default.user.findFirst({
         where: { email, isDeleted: false }
       });
-      const session = await sessionStore_default.create({
+      const session = await Sessionstore_default.create({
         type: "forgot",
         email,
         userId: user ? user.id : null,
@@ -204649,7 +204749,7 @@ var authController = class {
   static async forgotVerifyOtp(req, res) {
     try {
       const { forgotSessionToken, otp } = req.body;
-      const session = await sessionStore_default.get(forgotSessionToken, "forgot");
+      const session = await Sessionstore_default.get(forgotSessionToken, "forgot");
       if (!session) return helper_default.failed(res, GENERIC_OTP_FAIL);
       if (!session.userId) {
         return helper_default.failed(res, GENERIC_OTP_FAIL);
@@ -204661,7 +204761,7 @@ var authController = class {
       );
       if (!result.ok) {
         if (result.reason === "locked") {
-          await sessionStore_default.destroy(session.id);
+          await Sessionstore_default.destroy(session.id);
           return helper_default.failed(
             res,
             "Too many incorrect attempts. Please request a new code."
@@ -204669,7 +204769,7 @@ var authController = class {
         }
         return helper_default.failed(res, GENERIC_OTP_FAIL);
       }
-      await sessionStore_default.advance(session.id, { step: "verified" });
+      await Sessionstore_default.advance(session.id, { step: "verified" });
       return helper_default.success(res, "OTP verified.", { forgotSessionToken });
     } catch (error2) {
       console.error(error2);
@@ -204688,7 +204788,7 @@ var authController = class {
           "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character."
         );
       }
-      const session = await sessionStore_default.get(forgotSessionToken, "forgot");
+      const session = await Sessionstore_default.get(forgotSessionToken, "forgot");
       if (!session || !session.userId || session.step !== "verified") {
         return helper_default.failed(
           res,
@@ -204705,7 +204805,7 @@ var authController = class {
           lockedUntil: null
         }
       });
-      await sessionStore_default.destroy(session.id);
+      await Sessionstore_default.destroy(session.id);
       return helper_default.success(res, "Password updated successfully.", {});
     } catch (error2) {
       console.error(error2);
@@ -204783,6 +204883,7 @@ var authController = class {
       const updatedUser = await prismaClient_default.user.findUnique({
         where: { id: findUser.id },
         select: {
+          id: true,
           name: true,
           email: true,
           role: true,
@@ -205027,6 +205128,17 @@ var authController = class {
       return res.status(500).json({ available: false, message: "Could not check username" });
     }
   }
+  // ── GET CURRENCY ─────────────────────────────────────────────────────
+  static async getCurrency(req, res) {
+    try {
+      const { phoneCode, country } = req.query;
+      const data2 = resolveCurrency(phoneCode, country);
+      return helper_default.success(res, "Currency resolved successfully", data2);
+    } catch (err) {
+      console.error("getCurrency error:", err);
+      return helper_default.failed(res, "Could not resolve currency");
+    }
+  }
 };
 var authController_default = authController;
 
@@ -205035,20 +205147,121 @@ init_prismaClient();
 init_helper();
 var DEFAULT_CATEGORIES = [
   {
-    name: "Interior Design",
-    description: "Residential, commercial, and bespoke interior spaces",
-    specializations: ["Interior Designer", "3D Visualizer", "Vastu Consultant"]
+    name: "Interior Designer",
+    description: "Residential, commercial, luxury, and modular interior spaces",
+    specializations: [
+      "Residential Interior",
+      "Commercial & Office Interior",
+      "Modular Kitchen & Wardrobe",
+      "Hospitality & Restaurant",
+      "Living & Luxury Spaces",
+      "Retail & Showroom Design"
+    ]
   },
   {
-    name: "Exterior & Architecture",
-    description: "Structural, landscape, and facade exterior styling",
-    specializations: ["Exterior Designer", "Landscape Designer", "Structural Designer"]
+    name: "Exterior Designer",
+    description: "Architectural elevations, facades, and exterior remodeling",
+    specializations: [
+      "Residential Elevation",
+      "Commercial Facade Design",
+      "Modern Villa Elevation",
+      "Facade & Cladding Design",
+      "Exterior Remodeling & Lighting"
+    ]
   },
   {
-    name: "Drafting & Modeling",
-    description: "Technical drafting, 3D modeling, BIM, and product design",
-    specializations: ["AutoCAD Designer", "BIM Designer", "Product Designer"]
+    name: "AutoCAD Drafter",
+    description: "2D architectural drafting, working drawings, and MEP layouts",
+    specializations: [
+      "2D Architectural Drafting",
+      "Working & Detail Drawings",
+      "MEP & HVAC Drafting",
+      "Approval & Submission Drawings",
+      "Structural Layout Drafting"
+    ]
+  },
+  {
+    name: "Landscape Designer",
+    description: "Gardens, outdoor living spaces, terrace, and urban landscaping",
+    specializations: [
+      "Garden & Lawn Design",
+      "Terrace & Balcony Gardens",
+      "Urban & Public Landscapes",
+      "Farmhouse & Resort Landscapes",
+      "Hardscape & Water Features"
+    ]
+  },
+  {
+    name: "BIM Engineer",
+    description: "Building information modeling, Revit coordination, and clash detection",
+    specializations: [
+      "Revit BIM Modeling",
+      "Clash Detection & Coordination",
+      "4D / 5D BIM Simulation",
+      "MEP BIM Modeling",
+      "Structural BIM Engineering"
+    ]
+  },
+  {
+    name: "Product Designer",
+    description: "Custom furniture, lighting, millwork, and decorative products",
+    specializations: [
+      "Custom Furniture Design",
+      "Lighting & Luminaire Design",
+      "Home Decor & Artifacts",
+      "Millwork & Joinery Design",
+      "Industrial Product Design"
+    ]
+  },
+  {
+    name: "Graphic Designer",
+    description: "Environmental signage, architectural presentations, murals, and branding",
+    specializations: [
+      "Environmental & Signage Graphics",
+      "Architectural Presentation & Pitch Decks",
+      "Wall Art & Murals",
+      "Brand Identity & Signage",
+      "Marketing Collateral & 3D Infographics"
+    ]
+  },
+  {
+    name: "3D Modeler",
+    description: "3D architectural modeling, photorealistic rendering, and texturing",
+    specializations: [
+      "3D Architectural Modeling",
+      "Photorealistic Rendering",
+      "3ds Max / Blender / SketchUp Modeling",
+      "Furniture & Prop 3D Modeling",
+      "Texturing & Lighting Specialist"
+    ]
+  },
+  {
+    name: "Walkthrough Specialist",
+    description: "Architectural animations, virtual reality, and 360\xB0 virtual tours",
+    specializations: [
+      "3D Architectural Animation",
+      "Lumion / Unreal Engine Walkthrough",
+      "360\xB0 Virtual Tours & Panoramas",
+      "Real-Time VR Experiences",
+      "Cinematic Video Rendering"
+    ]
+  },
+  {
+    name: "Estimation Engineer",
+    description: "BOQ preparation, quantity surveying, cost estimation, and rate analysis",
+    specializations: [
+      "BOQ & Cost Estimation",
+      "Quantity Surveying & Material Takeoff",
+      "Material & Labor Costing",
+      "Rate Analysis & Budgeting",
+      "Tender & Contract Estimation"
+    ]
   }
+];
+var OBSOLETE_CATEGORIES = [
+  "Interior Design",
+  "Exterior & Architecture",
+  "Drafting & Modeling"
 ];
 var CategoryController = class {
   /**
@@ -205057,7 +205270,44 @@ var CategoryController = class {
    */
   static async getCategoriesAndSpecializations(req, res) {
     try {
-      let categories = await prismaClient_default.category.findMany({
+      try {
+        await prismaClient_default.category.deleteMany({
+          where: { name: { in: OBSOLETE_CATEGORIES } }
+        });
+      } catch (cleanErr) {
+        console.warn("Notice: Obsolete category cleanup skipped:", cleanErr.message);
+      }
+      for (const cat of DEFAULT_CATEGORIES) {
+        const createdCat = await prismaClient_default.category.upsert({
+          where: { name: cat.name },
+          update: {
+            description: cat.description
+          },
+          create: {
+            name: cat.name,
+            description: cat.description
+          }
+        });
+        for (const specName of cat.specializations) {
+          await prismaClient_default.specialization.upsert({
+            where: {
+              name_categoryId: {
+                name: specName,
+                categoryId: createdCat.id
+              }
+            },
+            update: {},
+            create: {
+              name: specName,
+              categoryId: createdCat.id
+            }
+          });
+        }
+      }
+      const categories = await prismaClient_default.category.findMany({
+        where: {
+          name: { in: DEFAULT_CATEGORIES.map((c5) => c5.name) }
+        },
         include: {
           specializations: {
             select: {
@@ -205069,45 +205319,6 @@ var CategoryController = class {
         },
         orderBy: { name: "asc" }
       });
-      if (categories.length === 0) {
-        for (const cat of DEFAULT_CATEGORIES) {
-          const createdCat = await prismaClient_default.category.upsert({
-            where: { name: cat.name },
-            update: {},
-            create: {
-              name: cat.name,
-              description: cat.description
-            }
-          });
-          for (const specName of cat.specializations) {
-            await prismaClient_default.specialization.upsert({
-              where: {
-                name_categoryId: {
-                  name: specName,
-                  categoryId: createdCat.id
-                }
-              },
-              update: {},
-              create: {
-                name: specName,
-                categoryId: createdCat.id
-              }
-            });
-          }
-        }
-        categories = await prismaClient_default.category.findMany({
-          include: {
-            specializations: {
-              select: {
-                id: true,
-                name: true
-              },
-              orderBy: { name: "asc" }
-            }
-          },
-          orderBy: { name: "asc" }
-        });
-      }
       return helper_default.success(
         res,
         "Categories and specializations fetched successfully",
@@ -205333,6 +205544,7 @@ router.post("/reCAPTCHAVerify", rateLimiter, authController_default.verifyCaptch
 router.post("/logout", Auth, authController_default.logout);
 router.get("/refreshToken", authController_default.refreshToken);
 router.get("/CheckUserName", authController_default.checkUsername);
+router.get("/currency", authController_default.getCurrency);
 var authRouter_default = router;
 
 // router/DesingerRoutes.js
@@ -205882,6 +206094,9 @@ var DesignController = class {
           res,
           `availability must be one of: ${AVAILABILITY_STATUSES.join(", ")}`
         );
+      }
+      if (bio !== void 0 && bio !== null && /\d/.test(String(bio))) {
+        return helper_default.failed(res, "Bio cannot contain numbers");
       }
       const sanitizedBio = bio !== void 0 ? sanitizeHtml_default(String(bio).trim()).slice(0, 1e3) : void 0;
       const photoUrl = (Array.isArray(cleanedArrays.photos) && cleanedArrays.photos.length > 0 ? cleanedArrays.photos[0] : null) || (Array.isArray(photos) && photos.length > 0 ? photos[0] : null) || profileImageUrl || (typeof profile === "string" && (profile.startsWith("http") || profile.startsWith("/uploads")) ? profile : null) || image || void 0;
@@ -206605,6 +206820,16 @@ var ClientController = class {
           message: "currentSpaceLikes/currentSpaceProblems are not applicable for NEW_CONSTRUCTION"
         });
       }
+      if (body.budgetMin !== void 0 && body.budgetMin !== null && body.budgetMin !== "") {
+        if (Number(body.budgetMin) < 1e3) {
+          errors.push({ field: "budgetMin", message: "Minimum budget must be at least \u20B91,000" });
+        }
+      }
+      if (body.budgetMax !== void 0 && body.budgetMax !== null && body.budgetMax !== "") {
+        if (Number(body.budgetMax) < 1e3) {
+          errors.push({ field: "budgetMax", message: "Maximum budget must be at least \u20B91,000" });
+        }
+      }
       if (Number(body.budgetMin) > Number(body.budgetMax)) {
         errors.push({ field: "budgetMin", message: "budgetMin cannot be greater than budgetMax" });
       }
@@ -206648,6 +206873,7 @@ var ClientController = class {
           clientId: req.user.id,
           title: body.title,
           category: body.category,
+          scope: body.scope || "FULL_PROJECT",
           servicesRequired: Array.isArray(body.servicesRequired) ? body.servicesRequired : [body.servicesRequired],
           description: body.description,
           address: body.address,
@@ -206815,6 +207041,12 @@ var ClientController = class {
       }
       const nextBudgetMin = body.budgetMin !== void 0 ? Number(body.budgetMin) : Number(existing.budgetMin);
       const nextBudgetMax = body.budgetMax !== void 0 ? Number(body.budgetMax) : Number(existing.budgetMax);
+      if (nextBudgetMin < 1e3) {
+        errors.push({ field: "budgetMin", message: "Minimum budget must be at least \u20B91,000" });
+      }
+      if (nextBudgetMax < 1e3) {
+        errors.push({ field: "budgetMax", message: "Maximum budget must be at least \u20B91,000" });
+      }
       if (nextBudgetMin > nextBudgetMax) {
         errors.push({ field: "budgetMin", message: "budgetMin cannot be greater than budgetMax" });
       }
@@ -207415,6 +207647,9 @@ var ArchitechController = class {
         image
       } = req.body;
       const photoUrl = (Array.isArray(photos) && photos.length > 0 ? photos[0] : null) || profileImageUrl || profile || image || void 0;
+      if (bio !== void 0 && bio !== null && /\d/.test(String(bio))) {
+        return helper_default.failed(res, "Bio cannot contain numbers");
+      }
       const updated = await prismaClient_default.$transaction(async (tx) => {
         const updatedUser = await tx.user.update({
           where: { id: userId },
@@ -207935,6 +208170,9 @@ var ContractorController = class {
         image
       } = req.body;
       const photoUrl = (Array.isArray(photos) && photos.length > 0 ? photos[0] : null) || profileImageUrl || profile || image || void 0;
+      if (bio !== void 0 && bio !== null && /\d/.test(String(bio))) {
+        return helper_default.failed(res, "Bio cannot contain numbers");
+      }
       const rawWorkTypes = workTypes !== void 0 ? workTypes : specializations;
       const updated = await prismaClient_default.$transaction(async (tx) => {
         const updatedUser = await tx.user.update({
@@ -208130,29 +208368,56 @@ var UserController = class {
       });
     }
   }
-  // Get Designers (role 2) — paginated + searchable
+  // Get Designers (role 2) — paginated + searchable + filterable by category & specialization
   static async getDesignerUsers(req, res) {
     try {
       const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
       const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
       const skip2 = (page - 1) * limit;
       const search = (req.query.search || "").trim();
+      const category = (req.query.category || "").trim();
+      const specialization = (req.query.specialization || "").trim();
       const where = {
         role: 2,
         isDeleted: false
       };
+      const andConditions = [];
       if (search) {
-        where.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { username: { contains: search, mode: "insensitive" } },
-          { email: { contains: search, mode: "insensitive" } },
-          { phone: { contains: search, mode: "insensitive" } },
-          { city: { contains: search, mode: "insensitive" } }
-        ];
+        andConditions.push({
+          OR: [
+            { name: { contains: search, mode: "insensitive" } },
+            { username: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+            { phone: { contains: search, mode: "insensitive" } },
+            { city: { contains: search, mode: "insensitive" } }
+          ]
+        });
+      }
+      if (category) {
+        andConditions.push({
+          OR: [
+            { category: { equals: category, mode: "insensitive" } },
+            { designer: { category: { equals: category, mode: "insensitive" } } }
+          ]
+        });
+      }
+      if (specialization) {
+        andConditions.push({
+          OR: [
+            { specialization: { equals: specialization, mode: "insensitive" } },
+            { designer: { specializations: { has: specialization } } }
+          ]
+        });
+      }
+      if (andConditions.length > 0) {
+        where.AND = andConditions;
       }
       const [users, total, blocked] = await Promise.all([
         prismaClient_default.user.findMany({
           where,
+          include: {
+            designer: true
+          },
           orderBy: { createdAt: "desc" },
           skip: skip2,
           take: limit
@@ -208170,9 +208435,19 @@ var UserController = class {
           isVerified,
           isRegistered,
           role,
+          designer,
           ...rest
         } = user;
-        return { ...rest, role: ACCOUNT_TYPE_NAMES6[role] || role };
+        const resolvedCategory = user.category || designer?.category || "N/A";
+        const resolvedSpecialization = user.specialization || (designer?.specializations && designer.specializations.length > 0 ? designer.specializations.join(", ") : "N/A");
+        return {
+          ...rest,
+          category: resolvedCategory,
+          specialization: resolvedSpecialization,
+          specializations: designer?.specializations || (user.specialization ? [user.specialization] : []),
+          designerDetails: designer || null,
+          role: ACCOUNT_TYPE_NAMES6[role] || role
+        };
       });
       return res.status(200).json({
         success: true,
@@ -211350,17 +211625,42 @@ function formatPortfolioUser(user) {
     profile: unifiedProfile,
     createdAt: user.createdAt,
     registeredDate: user.registeredDate,
-    posts: user.posts || [],
+    posts: (() => {
+      let userPosts = user.posts || [];
+      if (roleNum === 5 && Array.isArray(user.products) && user.products.length > 0) {
+        const productPosts = user.products.map((p3) => ({
+          id: p3.id,
+          title: p3.productName,
+          description: p3.description || `${p3.category || "Material"} - \u20B9${p3.price}/${p3.unit}`,
+          images: Array.isArray(p3.images) && p3.images.length > 0 ? p3.images : p3.thumbnail ? [p3.thumbnail] : [],
+          createdAt: p3.createdAt,
+          price: p3.price,
+          discountPrice: p3.discountPrice,
+          unit: p3.unit,
+          category: p3.category,
+          subCategory: p3.subCategory,
+          brand: p3.brand,
+          material: p3.material,
+          stock: p3.stock,
+          availability: p3.availability,
+          isProduct: true
+        }));
+        userPosts = userPosts.length > 0 ? [...userPosts, ...productPosts] : productPosts;
+      }
+      return userPosts;
+    })(),
     followers: user.followers || [],
     designer: user.designer || null,
     architect: user.architect || null,
     contractor: user.contractor || null,
     contactDetails: user.contactDetails || null,
-    _count: user._count || {
-      posts: user.posts?.length || 0,
+    products: user.products || [],
+    _count: {
+      posts: (user.posts?.length || 0) + (roleNum === 5 && user.products ? user.products.length : 0),
       followers: user.followers?.length || 0,
       following: 0,
-      products: 0
+      products: user.products?.length || user._count?.products || 0,
+      ...user._count || {}
     }
   };
 }
@@ -211448,6 +211748,29 @@ var PORTFOLIO_SELECT_FIELDS = {
       title: true,
       description: true,
       images: true,
+      createdAt: true
+    }
+  },
+  products: {
+    where: { status: "Active" },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      productName: true,
+      category: true,
+      subCategory: true,
+      brand: true,
+      unit: true,
+      price: true,
+      discountPrice: true,
+      stock: true,
+      images: true,
+      thumbnail: true,
+      material: true,
+      color: true,
+      description: true,
+      availability: true,
+      status: true,
       createdAt: true
     }
   },
@@ -211608,13 +211931,51 @@ var PostController = class {
       if (!userId) {
         return helper_default.failed(res, "User ID is required");
       }
-      const posts = await prismaClient_default.post.findMany({
+      let posts = await prismaClient_default.post.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit
       });
-      const totalCount = await prismaClient_default.post.count({ where: { userId } });
+      let totalCount = await prismaClient_default.post.count({ where: { userId } });
+      if (totalCount === 0) {
+        const user = await prismaClient_default.user.findUnique({
+          where: { id: userId },
+          select: { role: true }
+        });
+        const roleNum = typeof user?.role === "string" ? parseInt(user.role, 10) : user?.role;
+        if (roleNum === 5) {
+          const [products, productCount] = await Promise.all([
+            prismaClient_default.product.findMany({
+              where: { supplierId: userId, status: "Active" },
+              orderBy: { createdAt: "desc" },
+              skip: (page - 1) * limit,
+              take: limit
+            }),
+            prismaClient_default.product.count({
+              where: { supplierId: userId, status: "Active" }
+            })
+          ]);
+          posts = products.map((p3) => ({
+            id: p3.id,
+            title: p3.productName,
+            description: p3.description || `${p3.category || "Material"} - \u20B9${p3.price}/${p3.unit}`,
+            images: Array.isArray(p3.images) && p3.images.length > 0 ? p3.images : p3.thumbnail ? [p3.thumbnail] : [],
+            createdAt: p3.createdAt,
+            price: p3.price,
+            discountPrice: p3.discountPrice,
+            unit: p3.unit,
+            category: p3.category,
+            subCategory: p3.subCategory,
+            brand: p3.brand,
+            material: p3.material,
+            stock: p3.stock,
+            availability: p3.availability,
+            isProduct: true
+          }));
+          totalCount = productCount;
+        }
+      }
       const totalPages = Math.ceil(totalCount / limit) || 1;
       return helper_default.success(res, "Posts fetched successfully", {
         posts,
@@ -211646,9 +212007,10 @@ var PostController = class {
         return helper_default.failed(res, "User not found", {}, 404);
       }
       const user = formatPortfolioUser(rawUser);
+      const finalPosts = posts && posts.length > 0 ? posts : user.posts || [];
       return helper_default.success(res, "Portfolio fetched successfully", {
-        data: posts,
-        posts,
+        data: finalPosts,
+        posts: finalPosts,
         user
       });
     } catch (error2) {

@@ -471,6 +471,16 @@ class ClientController {
                 });
             }
 
+            if (body.budgetMin !== undefined && body.budgetMin !== null && body.budgetMin !== "") {
+                if (Number(body.budgetMin) < 1000) {
+                    errors.push({ field: "budgetMin", message: "Minimum budget must be at least ₹1,000" });
+                }
+            }
+            if (body.budgetMax !== undefined && body.budgetMax !== null && body.budgetMax !== "") {
+                if (Number(body.budgetMax) < 1000) {
+                    errors.push({ field: "budgetMax", message: "Maximum budget must be at least ₹1,000" });
+                }
+            }
             if (Number(body.budgetMin) > Number(body.budgetMax)) {
                 errors.push({ field: "budgetMin", message: "budgetMin cannot be greater than budgetMax" });
             }
@@ -532,6 +542,7 @@ class ClientController {
                     clientId: req.user.id,
                     title: body.title,
                     category: body.category,
+                    scope: body.scope || "FULL_PROJECT",
                     servicesRequired: Array.isArray(body.servicesRequired)
                         ? body.servicesRequired
                         : [body.servicesRequired],
@@ -760,6 +771,12 @@ class ClientController {
 
             const nextBudgetMin = body.budgetMin !== undefined ? Number(body.budgetMin) : Number(existing.budgetMin);
             const nextBudgetMax = body.budgetMax !== undefined ? Number(body.budgetMax) : Number(existing.budgetMax);
+            if (nextBudgetMin < 1000) {
+                errors.push({ field: "budgetMin", message: "Minimum budget must be at least ₹1,000" });
+            }
+            if (nextBudgetMax < 1000) {
+                errors.push({ field: "budgetMax", message: "Maximum budget must be at least ₹1,000" });
+            }
             if (nextBudgetMin > nextBudgetMax) {
                 errors.push({ field: "budgetMin", message: "budgetMin cannot be greater than budgetMax" });
             }

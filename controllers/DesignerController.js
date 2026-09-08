@@ -695,6 +695,10 @@ class DesignController {
         );
       }
 
+      if (bio !== undefined && bio !== null && /\d/.test(String(bio))) {
+        return helper.failed(res, "Bio cannot contain numbers");
+      }
+
       const sanitizedBio =
         bio !== undefined
           ? sanitizeData(String(bio).trim()).slice(0, 1000)

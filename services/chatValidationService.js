@@ -12,28 +12,44 @@ class ChatValidationService {
      */
     static validateMessage(text = "", attachments = []) {
         const rawText = typeof text === "string" ? text.trim() : "";
-        const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
 
-        // 1. Check for empty message
-        if (!rawText && !hasAttachments) {
-            throw new Error("Message cannot be empty. Please provide text or an attachment.");
+        // 1. Enforce no file attachments in chat
+        if (Array.isArray(attachments) && attachments.length > 0) {
+            throw new Error("File attachments are disabled in chat.");
         }
 
-        if (!rawText && hasAttachments) {
-            return { isValid: true, sanitizedText: "" };
+        // 2. Check for empty message
+        if (!rawText) {
+            throw new Error("Message cannot be empty. Please enter your message.");
         }
 
-        // 2. Reject messages consisting only of numbers or punctuation with numbers (e.g., "1", "123", "9999", "...", "1.")
+        // 3. Reject messages consisting only of numbers or punctuation with numbers (e.g., "1", "123", "9999", "...", "1.")
         // Also reject single-number or meaningless numeric spam
         const numericOnlyRegex = /^[\d\s.,\-–—_/\\#+*()%$@!?:;'"~`^&=[\]{}|<>]+$/;
         if (numericOnlyRegex.test(rawText)) {
             throw new Error("Number-only or meaningless inputs are not permitted. Please write a descriptive message.");
         }
 
-        // Check that text contains at least some alphabetic characters if it's not purely an attachment
+        // Check that text contains at least some alphabetic characters
         const alphaMatch = rawText.match(/[a-zA-Z]/g);
         if (!alphaMatch || alphaMatch.length < 2) {
             throw new Error("Please write a descriptive message with valid text.");
+        }
+
+        // 4. URL and External Website Link Detection
+        const urlPatterns = [
+            /https?:\/\/[^\s]+/i,
+            /www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*/i,
+            /\b[a-zA-Z0-9][-a-zA-Z0-9]*\.(?:com|in|org|net|co|io|ai|app|biz|info|xyz|site|online|tech|store|dev|me|club|live|link|pro|top|vip|us|uk|ca|au|de|fr|jp|ru|cn|tv|cc|to|space|fun|cloud|gov|edu)(?:\/[^\s]*)?\b/i,
+            /\b(?:bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly|is\.gd|buff\.ly|adf\.ly|bitly\.com)\b/i,
+            /(?:https?|ftp)\s*:\s*\/\s*\//i,
+            /[a-zA-Z0-9-]+\s*\.\s*(?:com|in|org|net|co|io|ai|app|xyz|site|online|tech|dev)\b/i,
+        ];
+
+        for (const pattern of urlPatterns) {
+            if (pattern.test(rawText)) {
+                throw new Error("Sharing website links or external URLs in chat is restricted for platform safety.");
+            }
         }
 
         // 3. Email Address Detection

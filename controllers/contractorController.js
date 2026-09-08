@@ -488,6 +488,10 @@ class ContractorController {
         image ||
         undefined;
 
+      if (bio !== undefined && bio !== null && /\d/.test(String(bio))) {
+        return helper.failed(res, "Bio cannot contain numbers");
+      }
+
       const rawWorkTypes = workTypes !== undefined ? workTypes : specializations;
 
       const updated = await prisma.$transaction(async (tx) => {
