@@ -13,6 +13,7 @@ import chatRoutes from "./chatRoutes.js";
 import reviewRouter from "./reviewRouter.js";
 import paymentRoutes from "./paymentRoutes.js";
 import walletRoutes from "./walletRoutes.js";
+import BankRouter from "./bankRouter.js";
 import PaymentController from "../controllers/paymentController.js";
 import helper from "../helper/helper.js";
 
@@ -39,6 +40,7 @@ router.use("/reviews", reviewRouter);
 router.use("/payments", paymentRoutes);
 router.use("/wallet", walletRoutes);
 router.use("/Designer", DesignerRouter);
+router.use("/bank-details", BankRouter);
 
 // Payment Webhook (exempt from user auth, verified via HMAC signature)
 router.post("/webhooks/payments/razorpay", PaymentController.handleRazorpayWebhook);

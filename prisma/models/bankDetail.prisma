@@ -1,0 +1,14 @@
+model BankDetail {
+  id                String   @id @default(uuid())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String   @unique
+  accountHolderName String
+  bankName          String
+  accountNumber     String
+  ifscCode          String
+  accountType       String   @default("SAVINGS") // SAVINGS or CURRENT
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+}

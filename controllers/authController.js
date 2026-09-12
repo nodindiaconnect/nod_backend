@@ -144,7 +144,9 @@ function resolveCurrency(phoneCode, country) {
 // Mirrors the frontend's ROLE_FIELDS (authShared.js) so profile data
 // submitted at register/create-account is validated server-side too.
 const ROLE_FIELD_SCHEMAS = {
-  [ACCOUNT_TYPES.Client]: [],
+  [ACCOUNT_TYPES.Client]: [
+    { id: "gstin", type: "gstin", required: false },
+  ],
   [ACCOUNT_TYPES.Designer]: [
     { id: "bio", type: "textarea", required: false, max: 1000 },
     { id: "category", type: "category", required: true },
@@ -171,6 +173,7 @@ const ROLE_FIELD_SCHEMAS = {
     { id: "experience", type: "number", required: false, min: 0, max: 80 },
     { id: "rate", type: "number", required: false, min: 0, max: 100000 },
     { id: "currency", type: "text", required: false, max: 10 },
+    { id: "gstin", type: "gstin", required: false },
   ],
   [ACCOUNT_TYPES.Architect]: [
     { id: "bio", type: "textarea", required: false, max: 1000 },
@@ -201,6 +204,7 @@ const ROLE_FIELD_SCHEMAS = {
     { id: "experience", type: "number", required: false, min: 0, max: 80 },
     { id: "rate", type: "number", required: false, min: 0, max: 100000 },
     { id: "currency", type: "text", required: false, max: 10 },
+    { id: "gstin", type: "gstin", required: false },
   ],
   [ACCOUNT_TYPES.Contractor]: [
     { id: "bio", type: "textarea", required: false, max: 1000 },
@@ -219,6 +223,7 @@ const ROLE_FIELD_SCHEMAS = {
       ],
     },
     { id: "experience", type: "number", required: false, min: 0, max: 80 },
+    { id: "gstin", type: "gstin", required: false },
   ],
   [ACCOUNT_TYPES.MaterialSupplier]: [
     { id: "businessName", type: "text", max: 150 },
@@ -234,6 +239,7 @@ const ROLE_FIELD_SCHEMAS = {
         "Importer",
       ],
     },
+    { id: "gstin", type: "gstin", required: false },
   ],
 };
 
@@ -336,6 +342,18 @@ async function validateRoleFields(roleCode, roleFields) {
       if (!field.options.includes(raw))
         return { ok: false, message: `${field.id} has an invalid value.` };
       cleaned[field.id] = raw;
+    } else if (field.type === "gstin" || field.id === "gstin") {
+      const gstinStr = String(raw).trim().toUpperCase();
+      if (gstinStr) {
+        const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+        if (!GSTIN_REGEX.test(gstinStr)) {
+          return {
+            ok: false,
+            message: "Invalid GSTIN format. Please provide a valid 15-character GSTIN (e.g., 22AAAAA0000A1Z5) or leave it empty.",
+          };
+        }
+        cleaned[field.id] = gstinStr;
+      }
     } else {
       // text / textarea
       if (typeof raw !== "string")
@@ -791,7 +809,7 @@ class authController {
   // profile fields once email ownership is confirmed. ────────────────
   static async registerCreateAccount(req, res) {
     try {
-      let { registerSessionToken, country, state, city, address, roleFields } =
+      let { registerSessionToken, country, state, city, address, roleFields, gstin } =
         req.body;
 
       // SANITIZED: location fields are free text — strip HTML before
@@ -849,6 +867,20 @@ class authController {
         }
       }
 
+      // Check if gstin is supplied directly or inside roleFields
+      let userGstin = validation.cleaned?.gstin;
+      if (!userGstin && typeof gstin === "string" && gstin.trim()) {
+        const cleanGstin = gstin.trim().toUpperCase();
+        const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+        if (!GSTIN_REGEX.test(cleanGstin)) {
+          return helper.failed(
+            res,
+            "Invalid GSTIN format. Please enter a valid 15-character GSTIN or leave it empty."
+          );
+        }
+        userGstin = cleanGstin;
+      }
+
       await prisma.user.update({
         where: { id: session.userId },
         data: {
@@ -856,6 +888,7 @@ class authController {
           ...(state && { state }),
           ...(city && { city }),
           ...(address && { address }),
+          ...(userGstin && { gstin: userGstin }),
           ...(validation.cleaned.category && {
             category: validation.cleaned.category,
           }),
@@ -937,6 +970,7 @@ class authController {
               yearsOfExperience: exp,
               experienceLevel: expLevel,
               workTypes: trades,
+              ...(userGstin && { gstNumber: userGstin }),
             },
             create: {
               userId: session.userId,
@@ -945,6 +979,7 @@ class authController {
               experienceLevel: expLevel,
               workTypes: trades,
               licenseNumber: `PENDING-${session.userId}`,
+              gstNumber: userGstin || null,
               certifications: "[]",
               portfolioLinks: "[]",
               serviceCities: JSON.stringify([city, state].filter(Boolean)),

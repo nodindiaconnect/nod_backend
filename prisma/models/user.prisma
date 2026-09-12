@@ -95,7 +95,8 @@ model User {
   escrowTransactions ProjectEscrowTransaction[]
 
   contactDetails ContactDetails?
-
+  bankDetail     BankDetail?
+  gstin          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
