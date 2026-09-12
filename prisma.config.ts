@@ -24,6 +24,6 @@ export default defineConfig({
   },
 
   datasource: {
-    url: process.env.DATABASE_URL_PROD,
+    url: process.env.DATABASE_URL_PROD || process.env.DATABASE_URL,
   },
 });
