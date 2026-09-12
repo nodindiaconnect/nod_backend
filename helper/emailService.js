@@ -1,12 +1,19 @@
 import nodeMailer from "nodemailer";
+import dns from "node:dns";
+
+// Ensure Node defaults to IPv4 first on cloud hosts (e.g. Render) where IPv6 has no route
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 const SMTP_CONFIG = {
   host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  port: 465,
+  secure: true,
+  family: 4, // Forces IPv4 — avoids ENETUNREACH (2607:f8b0:400e:c06::6d) on Render
   auth: {
-    user: "nodindiaconnect@gmail.com",
-    pass: "zdng erej vfqb nacf",
+    user: process.env.EMAIL_USER || "nodindiaconnect@gmail.com",
+    pass: process.env.EMAIL_PASS || "zdng erej vfqb nacf",
   },
 };
 

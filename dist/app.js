@@ -56167,7 +56167,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
 var require_connection_parameters = __commonJS({
   "node_modules/pg/lib/connection-parameters.js"(exports2, module2) {
     "use strict";
-    var dns = require("dns");
+    var dns2 = require("dns");
     var defaults3 = require_defaults();
     var parse = require_pg_connection_string().parse;
     var val = function(key, config2, envVar) {
@@ -56303,7 +56303,7 @@ var require_connection_parameters = __commonJS({
         if (this.client_encoding) {
           params.push("client_encoding=" + quoteParamValue(this.client_encoding));
         }
-        dns.lookup(this.host, function(err, address) {
+        dns2.lookup(this.host, function(err, address) {
           if (err) return cb(err, null);
           params.push("hostaddr=" + quoteParamValue(address));
           return cb(null, params.join(" "));
@@ -62054,7 +62054,7 @@ var require_shared = __commonJS({
     var fs2 = require("fs");
     var nmfetch = require_fetch();
     var errors = require_errors();
-    var dns = require("dns");
+    var dns2 = require("dns");
     var net = require("net");
     var os = require("os");
     var DNS_TTL = 5 * 60 * 1e3;
@@ -62083,16 +62083,16 @@ var require_shared = __commonJS({
       if (!isFamilySupported(family, options.allowInternalNetworkInterfaces)) {
         return callback(null, []);
       }
-      const dnsResolver = dns.Resolver ? new dns.Resolver(options) : dns;
+      const dnsResolver = dns2.Resolver ? new dns2.Resolver(options) : dns2;
       dnsResolver["resolve" + family](hostname, (err, addresses) => {
         if (err) {
           switch (err.code) {
-            case dns.NODATA:
-            case dns.NOTFOUND:
-            case dns.NOTIMP:
-            case dns.SERVFAIL:
-            case dns.CONNREFUSED:
-            case dns.REFUSED:
+            case dns2.NODATA:
+            case dns2.NOTFOUND:
+            case dns2.NOTIMP:
+            case dns2.SERVFAIL:
+            case dns2.CONNREFUSED:
+            case dns2.REFUSED:
             case "EAI_AGAIN":
               return callback(null, []);
           }
@@ -62210,7 +62210,7 @@ var require_shared = __commonJS({
             }
           }
           try {
-            dns.lookup(options.host, { all: true }, (err3, addresses3) => {
+            dns2.lookup(options.host, { all: true }, (err3, addresses3) => {
               if (err3) {
                 if (cached) {
                   dnsCache.set(options.host, {
@@ -68229,7 +68229,7 @@ var require_mailer = __commonJS({
     var packageData = require_package();
     var MailMessage = require_mail_message();
     var net = require("net");
-    var dns = require("dns");
+    var dns2 = require("dns");
     var crypto5 = require("crypto");
     var Mail = class extends EventEmitter2 {
       constructor(transporter, options, defaults3) {
@@ -68544,7 +68544,7 @@ var require_mailer = __commonJS({
               if (net.isIP(proxy.hostname)) {
                 return connect(proxy.hostname);
               }
-              return dns.resolve(proxy.hostname, (err2, address) => {
+              return dns2.resolve(proxy.hostname, (err2, address) => {
                 if (err2) {
                   return callback(err2);
                 }
@@ -203265,13 +203265,19 @@ init_helper();
 
 // helper/emailService.js
 var import_nodemailer2 = __toESM(require_nodemailer(), 1);
+var import_node_dns = __toESM(require("node:dns"), 1);
+if (import_node_dns.default.setDefaultResultOrder) {
+  import_node_dns.default.setDefaultResultOrder("ipv4first");
+}
 var SMTP_CONFIG = {
   host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  port: 465,
+  secure: true,
+  family: 4,
+  // Forces IPv4 — avoids ENETUNREACH (2607:f8b0:400e:c06::6d) on Render
   auth: {
-    user: "nodindiaconnect@gmail.com",
-    pass: "zdng erej vfqb nacf"
+    user: process.env.EMAIL_USER || "nodindiaconnect@gmail.com",
+    pass: process.env.EMAIL_PASS || "zdng erej vfqb nacf"
   }
 };
 var FROM_EMAIL2 = "NOD <nodindiaconnect@gmail.com>";
