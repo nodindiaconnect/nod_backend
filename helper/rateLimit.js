@@ -6,18 +6,14 @@ const MAX_WINDOW_REQUEST_COUNT = 5;
 
 export const rateLimiter = async (req, res, next) => {
   try {
-    const email =
+    const rawEmail =
       req.body?.email ||
       req.query?.email ||
       req.headers?.email ||
       req.user?.email;
 
-    if (!email) {
-      return res.status(400).json({
-        success: 0,
-        message: "Email is required.",
-      });
-    }
+    const email = typeof rawEmail === "string" && rawEmail.trim() ? rawEmail.toLowerCase().trim() : null;
+    const identifier = email ? `${req.ip}:${email}` : `ip:${req.ip || "unknown"}`;
 
     const route = req.baseUrl + req.path;
 
@@ -27,8 +23,6 @@ export const rateLimiter = async (req, res, next) => {
     const WINDOW_SIZE = isLoginRoute
       ? WINDOW_SIZE_LOGIN
       : WINDOW_SIZE_DEFAULT;
-
-    const identifier = `${req.ip}:${email}`;
 
     const now = new Date();
 

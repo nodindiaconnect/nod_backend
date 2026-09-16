@@ -1,21 +1,37 @@
 import nodeMailer from "nodemailer";
 import dns from "node:dns";
+import dnsPromises from "node:dns/promises";
 
 // Ensure Node defaults to IPv4 first on cloud hosts (e.g. Render) where IPv6 has no route
 if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder("ipv4first");
 }
 
-const SMTP_CONFIG = {
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  family: 4, // Forces IPv4 — avoids ENETUNREACH (2607:f8b0:400e:c06::6d) on Render
-  auth: {
-    user: process.env.EMAIL_USER || "nodindiaconnect@gmail.com",
-    pass: process.env.EMAIL_PASS || "zdng erej vfqb nacf",
-  },
-};
+async function getTransporterConfig() {
+  let host = "smtp.gmail.com";
+  try {
+    const ipv4Addresses = await dnsPromises.resolve4("smtp.gmail.com");
+    if (ipv4Addresses && ipv4Addresses.length > 0) {
+      host = ipv4Addresses[0]; // Direct IPv4 IP skips Nodemailer's random IPv6 resolution
+    }
+  } catch (err) {
+    console.warn("[emailService] IPv4 DNS resolution failed, fallback to hostname:", err.message);
+  }
+
+  return {
+    host,
+    port: 465,
+    secure: true,
+    servername: "smtp.gmail.com",
+    tls: {
+      servername: "smtp.gmail.com",
+    },
+    auth: {
+      user: process.env.EMAIL_USER || "nodindiaconnect@gmail.com",
+      pass: process.env.EMAIL_PASS || "zdng erej vfqb nacf",
+    },
+  };
+}
 
 const FROM_EMAIL = "NOD <nodindiaconnect@gmail.com>";
 const BRAND_NAME = "NOD";
@@ -220,20 +236,13 @@ class emailService {
     console.log(`[emailService] Preparing to send email`);
     console.log(`[emailService] To: ${email}`);
     console.log(`[emailService] Subject: ${subject}`);
-    console.log(`[emailService] SMTP host: ${SMTP_CONFIG.host}:${SMTP_CONFIG.port}`);
-    console.log(`[emailService] SMTP user: ${SMTP_CONFIG.auth.user}`);
 
     try {
-      const transporter = nodeMailer.createTransport(SMTP_CONFIG);
+      const config = await getTransporterConfig();
+      console.log(`[emailService] SMTP host: ${config.host}:${config.port} (servername: ${config.servername})`);
+      console.log(`[emailService] SMTP user: ${config.auth.user}`);
 
-      // Verify SMTP connection/auth before attempting to send
-      try {
-        await transporter.verify();
-        console.log("[emailService] SMTP connection verified successfully ✅");
-      } catch (verifyErr) {
-        console.error("[emailService] SMTP verification FAILED ❌:", verifyErr.message);
-        throw verifyErr;
-      }
+      const transporter = nodeMailer.createTransport(config);
 
       const info = await transporter.sendMail({
         from: FROM_EMAIL,

@@ -17,8 +17,11 @@ router.get("/", (req, res) => {
 
 // AdminRoutes
 router.use("/Users", UserRouter);
+router.use("/users", UserRouter);
 router.use("/Projects", ProjectRouter);
+router.use("/projects", ProjectRouter);
 router.use("/adminUsers", adminUsersRouter);
+router.use("/admin-users", adminUsersRouter);
 router.use("/bids", AdminBiddingRouter);
 router.use("/chats", AdminChatRouter);
 router.use("/teams", AdminProjectTeamRouter);

@@ -1,6 +1,7 @@
 import helper from "../../helper/helper.js";
 import EscrowService from "../../services/escrowService.js";
 import SystemConfigService from "../../services/systemConfigService.js";
+import WalletService from "../../services/walletService.js";
 import prisma from "../../config/prismaClient.js";
 
 class AdminFinanceController {
@@ -168,6 +169,68 @@ class AdminFinanceController {
                     totalPages: Math.ceil(total / limit) || 1,
                 },
             });
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
+        }
+    }
+
+    /**
+     * List all specialist withdrawal requests
+     * GET /api/Admin/finance/withdrawals
+     */
+    static async getWithdrawals(req, res, next) {
+        try {
+            const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+            const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+            const skip = (page - 1) * limit;
+            const status = req.query.status;
+
+            const where = {};
+            if (status && ["PENDING", "PROCESSING", "COMPLETED", "FAILED"].includes(status)) {
+                where.status = status;
+            }
+
+            const [withdrawals, total] = await Promise.all([
+                prisma.withdrawal.findMany({
+                    where,
+                    skip,
+                    take: limit,
+                    orderBy: { createdAt: "desc" },
+                    include: {
+                        user: {
+                            select: { id: true, name: true, email: true, phone: true, role: true },
+                        },
+                        wallet: true,
+                    },
+                }),
+                prisma.withdrawal.count({ where }),
+            ]);
+
+            return helper.success(res, "Withdrawal requests fetched successfully", {
+                withdrawals,
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit) || 1,
+                },
+            });
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
+        }
+    }
+
+    /**
+     * Admin updates withdrawal status (PROCESSING, COMPLETED, FAILED)
+     * POST /api/Admin/finance/withdrawals/:withdrawalId/status
+     */
+    static async updateWithdrawalStatus(req, res, next) {
+        try {
+            const { withdrawalId } = req.params;
+            const { status, failureReason } = req.body;
+            const adminUser = req.admin || req.user;
+            const result = await WalletService.updateWithdrawalStatus(adminUser, withdrawalId, status, failureReason);
+            return helper.success(res, `Withdrawal request status updated to ${status}`, result);
         } catch (error) {
             return helper.failed(res, error.message, {}, 400);
         }

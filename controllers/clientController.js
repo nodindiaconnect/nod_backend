@@ -931,6 +931,14 @@ class ClientController {
                 });
             }
 
+            const isOwner = req.user?.id === project.clientId || req.admin;
+            if (!isOwner) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Unauthorized: Only the project owner can change project availability status",
+                });
+            }
+
             const updatedProject = await prisma.project.update({
                 where: {
                     id: projectId,
@@ -983,6 +991,31 @@ class ClientController {
             return helper.success(res, "Team member removed successfully", removed);
         } catch (error) {
             return helper.failed(res, error.message, {}, error.message.includes("Unauthorized") ? 403 : 400);
+        }
+    }
+
+    static async getDashboardStats(req, res) {
+        try {
+            const clientId = req.user.id;
+            const [totalProjects, activeProjects, completedProjects, totalBids] = await Promise.all([
+                prisma.project.count({ where: { clientId, isDeleted: false } }),
+                prisma.project.count({ where: { clientId, isDeleted: false, status: { in: ["IN_PROGRESS", "ACCEPTED", "WAITING_FOR_QUOTATIONS"] } } }),
+                prisma.project.count({ where: { clientId, isDeleted: false, status: "COMPLETED" } }),
+                prisma.bid.count({
+                    where: {
+                        project: { clientId, isDeleted: false },
+                    },
+                }),
+            ]);
+
+            return helper.success(res, "Client dashboard stats retrieved successfully", {
+                totalProjects,
+                activeProjects,
+                completedProjects,
+                totalBids,
+            });
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
         }
     }
 

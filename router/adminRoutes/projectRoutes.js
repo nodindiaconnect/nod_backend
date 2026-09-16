@@ -1,8 +1,10 @@
 import { Router } from "express";
 import ProjectController from "../../controllers/admin/projectsController.js";
-let router = Router();
+import { Auth, verifyAdmin, checkPermission } from "../../middleware/authenticate.js";
 
+const router = Router();
 
+router.use(Auth, verifyAdmin, checkPermission("ALL_PROJECTS"));
 
 router.get("/projects", ProjectController.getAllProjects);
 router.get("/projects/:id", ProjectController.getProjectById);

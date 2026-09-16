@@ -15,8 +15,51 @@ dotenv.config();
 const app = Express();
 const PORT = db.PORT || 3000;
 
+const allowedOrigins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "https://nodindia.com",
+    "https://www.nodindia.com",
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim()) : []),
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
+    ...(process.env.ADMIN_URL ? [process.env.ADMIN_URL.trim()] : []),
+].filter(Boolean);
+
+const corsOptions = {
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, server-to-server, Postman)
+        if (!origin) return callback(null, true);
+
+        // Allow defined whitelist
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+
+        // Allow *.onrender.com and Firebase hosting domains (*.web.app, *.firebaseapp.com)
+        if (
+            /^https:\/\/.*\.onrender\.com$/.test(origin) ||
+            /^https:\/\/.*\.web\.app$/.test(origin) ||
+            /^https:\/\/.*\.firebaseapp\.com$/.test(origin)
+        ) {
+            return callback(null, true);
+        }
+
+        // Allow all in development
+        if (process.env.NODE_ENV !== "production") {
+            return callback(null, true);
+        }
+
+        logger.warn(`Blocked CORS request from origin: ${origin}`);
+        return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-requested-with", "idempotency-key"],
+};
+
 app.use(helmet());
-app.use(cors());
+app.use(cors(corsOptions));
 app.disable("x-powered-by");
 
 app.use(Express.json({
@@ -39,6 +82,14 @@ app.use(sanitizeRequest);
 // API routes
 app.use("/api", allRoutes);
 
+// Fallback for direct function calls where /api prefix is stripped
+app.use("/", (req, res, next) => {
+  if (req.path === "/" || req.path === "") {
+    return res.json({ status: "working" });
+  }
+  return allRoutes(req, res, next);
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found", path: req.url });
@@ -56,9 +107,21 @@ app.use((err, req, res, next) => {
 
 connectToPostgres();
 
-const server = http.createServer(app);
-initSocketServer(server);
+// Detect whether running in serverless environment (Firebase Cloud Functions / Cloud Run)
+const isServerless = Boolean(
+  process.env.FUNCTION_TARGET ||
+  process.env.K_SERVICE ||
+  process.env.FIREBASE_CONFIG
+);
 
-server.listen(PORT, "0.0.0.0", () => {
-  logger.info(`App started on port ${PORT}`);
-});
+// Only start standalone HTTP & WebSocket server when running locally / directly
+if (!isServerless) {
+  const server = http.createServer(app);
+  initSocketServer(server);
+
+  server.listen(PORT, "0.0.0.0", () => {
+    logger.info(`App started on port ${PORT}`);
+  });
+}
+
+export default app;

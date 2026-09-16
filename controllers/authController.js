@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import axios from "axios";
 import JWT from "jsonwebtoken";
 import prisma from "../config/prismaClient.js";
+import db from "../config/db.js";
 import helper from "../helper/helper.js";
 import emailService from "../helper/emailService.js";
 import sessionStore from "../helper/Sessionstore.js";
@@ -1553,23 +1554,40 @@ class authController {
         return res.status(401).json({ message: "Refresh Token is required" });
 
       const decoded = JWT.decode(expiredToken);
-      if (!decoded)
+      if (!decoded || !decoded.id)
         return res.status(403).json({ message: "Invalid Refresh Token" });
 
-      JWT.verify(expiredToken, process.env.JWT_SK, (err) => {
-        if (err && err.name !== "TokenExpiredError") {
-          return res.status(403).json({ message: "Invalid Refresh Token" });
-        }
-        const token = JWT.sign(
-          { id: decoded.id, exp: Math.floor(Date.now() / 1000) + 60 * 15 },
-          process.env.JWT_SK,
-        );
-        return helper.success(res, "Refresh Token Generated Successfully", {
-          token,
-        });
+      const jwtSecret = db?.JWT_SK || process.env.JWT_SK || process.env.JWT_SK_PROD || "3afb3875be5526c6c13aebfe449431e3fdbee46d77bf60c0f693ad44118c9031";
+
+      try {
+        JWT.verify(expiredToken, jwtSecret, { ignoreExpiration: true });
+      } catch (verifyErr) {
+        return res.status(403).json({ message: "Invalid Refresh Token signature" });
+      }
+
+      // Security check: verify user exists, is not deleted, and is not blocked
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+      });
+
+      if (!user || user.isDeleted) {
+        return res.status(403).json({ message: "Account not found or deleted" });
+      }
+
+      if (user.isBlocked) {
+        return res.status(403).json({ message: "Account has been blocked" });
+      }
+
+      const token = JWT.sign(
+        { id: user.id, loginTime: new Date(), exp: Math.floor(Date.now() / 1000) + 60 * 15 },
+        jwtSecret,
+      );
+
+      return helper.success(res, "Refresh Token Generated Successfully", {
+        token,
       });
     } catch (error) {
-      console.error(error);
+      console.error("refreshToken error:", error?.message);
       return helper.failed(res, GENERIC_SERVER_ERROR);
     }
   }

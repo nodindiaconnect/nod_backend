@@ -35,6 +35,13 @@ router.get(
     PaymentController.getInvoiceById
 );
 
+// Download Invoice PDF
+router.get(
+    "/invoices/:invoiceId/pdf",
+    Auth,
+    PaymentController.downloadInvoicePdf
+);
+
 // Dedicated Project Wallet / Escrow Details (Role-Aware)
 router.get(
     "/projects/:projectId/escrow",

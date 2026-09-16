@@ -12,11 +12,12 @@
 
 import { Router } from "express";
 import ContactController from "../controllers/contactController.js";
+import { rateLimiter } from "../helper/rateLimit.js";
 
 const router = Router();
 
-router.post("/leads/popup", ContactController.submitPopupLead);
-router.post("/leads/contact", ContactController.submitContactSectionLead);
+router.post("/leads/popup", rateLimiter, ContactController.submitPopupLead);
+router.post("/leads/contact", rateLimiter, ContactController.submitContactSectionLead);
 
 export default router;
 

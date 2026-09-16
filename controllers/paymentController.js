@@ -4,6 +4,7 @@ import EscrowService from "../services/escrowService.js";
 import SystemConfigService from "../services/systemConfigService.js";
 import PaymentCalculationService from "../services/paymentCalculationService.js";
 import InvoiceService from "../services/invoiceService.js";
+import InvoicePdfService from "../services/invoicePdfService.js";
 import logger from "../helper/logger.js";
 
 class PaymentController {
@@ -73,6 +74,20 @@ class PaymentController {
             const invoice = await InvoiceService.getInvoiceById(invoiceId, req.user || req.admin);
             return helper.success(res, "Invoice fetched successfully", invoice);
         } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
+        }
+    }
+
+    /**
+     * Download Invoice as PDF Stream
+     * GET /api/payments/invoices/:invoiceId/pdf
+     */
+    static async downloadInvoicePdf(req, res, next) {
+        try {
+            const { invoiceId } = req.params;
+            await InvoicePdfService.streamInvoicePdf(invoiceId, req.user || req.admin, res);
+        } catch (error) {
+            logger.error(`[PaymentController] Failed to generate invoice PDF: ${error.message}`);
             return helper.failed(res, error.message, {}, 400);
         }
     }

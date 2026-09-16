@@ -63,15 +63,20 @@ console.log("DB_NAME:", db.DB_NAME);
 console.log("DB_PASSWORD:", db.DB_PASSWORD ? "Loaded ✅" : "Not Found ❌");
 console.log("=======================================");
 
-const pgPool = new Pool({
-  host: db.DB_HOST,
-  port: db.DB_PORT,
-  user: db.DB_USER,
-  password: db.DB_PASSWORD,
-  database: db.DB_NAME,
-  // If you're using DATABASE_URL instead, use this and drop the fields above:
-  // connectionString: db.DATABASE_URL,
-});
+const pgPool = new Pool(
+  db.DATABASE_URL
+    ? {
+        connectionString: db.DATABASE_URL,
+        ssl: db.env === "production" ? { rejectUnauthorized: false } : undefined,
+      }
+    : {
+        host: db.DB_HOST,
+        port: db.DB_PORT,
+        user: db.DB_USER,
+        password: db.DB_PASSWORD,
+        database: db.DB_NAME,
+      }
+);
 
 async function connectToPostgres() {
   try {

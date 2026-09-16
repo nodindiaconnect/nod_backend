@@ -13,14 +13,21 @@ const unescapeEntities = (str) => {
         .replace(/&#39;/g, "'");
 };
 
+const PASSWORD_FIELDS = new Set(["password", "newPassword", "currentPassword", "confirmPassword"]);
+
 /**
  * Recursively sanitizes every string in an object/array.
  * Removes HTML tags and dangerous JavaScript.
+ * Preserves password fields byte-for-byte so special characters/spaces aren't corrupted.
  */
-const sanitizeData = (value) => {
+const sanitizeData = (value, parentKey = null) => {
+
+    if (parentKey && PASSWORD_FIELDS.has(parentKey) && typeof value === "string") {
+        return value;
+    }
 
     if (Array.isArray(value)) {
-        return value.map(sanitizeData);
+        return value.map((item) => sanitizeData(item, parentKey));
     }
 
     if (value !== null && typeof value === "object") {
@@ -28,7 +35,7 @@ const sanitizeData = (value) => {
         const result = {};
 
         for (const key of Object.keys(value)) {
-            result[key] = sanitizeData(value[key]);
+            result[key] = sanitizeData(value[key], key);
         }
 
         return result;

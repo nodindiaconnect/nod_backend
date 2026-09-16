@@ -22,4 +22,8 @@ router.get("/platform-revenue", Auth, verifyAdmin, AdminFinanceController.getPla
 router.get("/platform-fee", Auth, verifyAdmin, AdminFinanceController.getPlatformFee);
 router.patch("/platform-fee", Auth, verifyAdmin, AdminFinanceController.updatePlatformFee);
 
+// Withdrawals Management
+router.get("/withdrawals", Auth, verifyAdmin, AdminFinanceController.getWithdrawals);
+router.post("/withdrawals/:withdrawalId/status", Auth, verifyAdmin, AdminFinanceController.updateWithdrawalStatus);
+
 export default router;

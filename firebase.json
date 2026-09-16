@@ -1,0 +1,23 @@
+{
+  "functions": [
+    {
+      "source": ".",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        ".agents",
+        ".claude",
+        "logs",
+        "dist",
+        "dummy",
+        "functions",
+        "test*.js",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}

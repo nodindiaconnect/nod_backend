@@ -4,13 +4,6 @@ import {
   validatePopupLead,
   validateContactSectionLead,
 } from "../helper/leadValidators.js";
-console.log(Object.getOwnPropertyNames(emailService));
-
-console.log("PRISMA CHECK:", {
-  prismaExists: !!prisma,
-  contactLeadExists: !!prisma?.contactLead,
-  createExists: !!prisma?.contactLead?.create,
-});
 const LEAD_NOTIFICATION_RECIPIENTS = ["nodindiaconnect@gmail.com"];
 
 class ContactController {
@@ -40,17 +33,15 @@ class ContactController {
         },
       });
 
-      try {
-        await emailService.sendPopupLeadMail(
-          lead,
-          LEAD_NOTIFICATION_RECIPIENTS,
-        );
-      } catch (emailErr) {
-        console.error(
-          "Failed to send popup lead notification email:",
-          emailErr.message,
-        );
-      }
+      // Dispatch email notification asynchronously so client response is instant
+      emailService
+        .sendPopupLeadMail(lead, LEAD_NOTIFICATION_RECIPIENTS)
+        .catch((emailErr) => {
+          console.error(
+            "Failed to send popup lead notification email in background:",
+            emailErr.message,
+          );
+        });
 
       return res.status(201).json({
         success: true,
@@ -98,17 +89,15 @@ class ContactController {
         },
       });
 
-      try {
-        await emailService.sendContactSectionLeadMail(
-          lead,
-          LEAD_NOTIFICATION_RECIPIENTS,
-        );
-      } catch (emailErr) {
-        console.error(
-          "Failed to send contact-section lead notification email:",
-          emailErr.message,
-        );
-      }
+      // Dispatch email notification asynchronously so client response is instant
+      emailService
+        .sendContactSectionLeadMail(lead, LEAD_NOTIFICATION_RECIPIENTS)
+        .catch((emailErr) => {
+          console.error(
+            "Failed to send contact-section lead notification email in background:",
+            emailErr.message,
+          );
+        });
 
       return res.status(201).json({
         success: true,

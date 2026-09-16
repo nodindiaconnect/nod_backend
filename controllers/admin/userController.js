@@ -12,6 +12,25 @@ const ACCOUNT_TYPE_NAMES = Object.fromEntries(
   Object.entries(ACCOUNT_TYPES).map(([name, code]) => [code, name])
 );
 
+function sanitizeUserResponse(user) {
+  if (!user) return null;
+  const {
+    password,
+    isDeleted,
+    forgotReq,
+    loginTime,
+    registeredDate,
+    activeDate,
+    isVerified,
+    isRegistered,
+    lockedUntil,
+    failedLoginAttempts,
+    role,
+    ...rest
+  } = user;
+  return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
+}
+
 class UserController {
 
   // Get Clients (role 1) — paginated + searchable
@@ -48,22 +67,7 @@ class UserController {
         prisma.user.count({ where: { ...where, isBlocked: true } }),
       ]);
 
-      const data = users.map((user) => {
-        const {
-          isDeleted,
-          forgotReq,
-          loginTime,
-          registeredDate,
-          activeDate,
-          isVerified,
-          isRegistered,
-          lockedUntil,
-          failedLoginAttempts,
-          role,
-          ...rest
-        } = user;
-        return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
-      });
+      const data = users.map(sanitizeUserResponse);
 
       return res.status(200).json({
         success: true,
@@ -155,6 +159,7 @@ class UserController {
 
       const data = users.map((user) => {
         const {
+          password,
           isDeleted,
           forgotReq,
           loginTime,
@@ -162,6 +167,8 @@ class UserController {
           activeDate,
           isVerified,
           isRegistered,
+          lockedUntil,
+          failedLoginAttempts,
           role,
           designer,
           ...rest
@@ -242,20 +249,7 @@ class UserController {
         prisma.user.count({ where: { ...where, isBlocked: true } }),
       ]);
 
-      const data = users.map((user) => {
-        const {
-          isDeleted,
-          forgotReq,
-          loginTime,
-          registeredDate,
-          activeDate,
-          isVerified,
-          isRegistered,
-          role,
-          ...rest
-        } = user;
-        return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
-      });
+      const data = users.map(sanitizeUserResponse);
 
       return res.status(200).json({
         success: true,
@@ -314,20 +308,7 @@ class UserController {
         prisma.user.count({ where: { ...where, isBlocked: true } }),
       ]);
 
-      const data = users.map((user) => {
-        const {
-          isDeleted,
-          forgotReq,
-          loginTime,
-          registeredDate,
-          activeDate,
-          isVerified,
-          isRegistered,
-          role,
-          ...rest
-        } = user;
-        return { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role };
-      });
+      const data = users.map(sanitizeUserResponse);
 
       return res.status(200).json({
         success: true,
@@ -400,22 +381,10 @@ class UserController {
         data: updateData
       });
 
-      const {
-        isDeleted,
-        forgotReq,
-        loginTime,
-        registeredDate,
-        activeDate,
-        isVerified,
-        isRegistered,
-        role,
-        ...rest
-      } = updatedUser;
-
       return res.status(200).json({
         success: true,
         message: "User updated successfully",
-        data: { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role }
+        data: sanitizeUserResponse(updatedUser)
       });
 
     } catch (error) {
@@ -455,22 +424,10 @@ class UserController {
         data: { isBlocked: true }
       });
 
-      const {
-        isDeleted,
-        forgotReq,
-        loginTime,
-        registeredDate,
-        activeDate,
-        isVerified,
-        isRegistered,
-        role,
-        ...rest
-      } = updatedUser;
-
       return res.status(200).json({
         success: true,
         message: "User blocked successfully",
-        data: { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role }
+        data: sanitizeUserResponse(updatedUser)
       });
 
     } catch (error) {
@@ -510,22 +467,10 @@ class UserController {
         data: { isBlocked: false }
       });
 
-      const {
-        isDeleted,
-        forgotReq,
-        loginTime,
-        registeredDate,
-        activeDate,
-        isVerified,
-        isRegistered,
-        role,
-        ...rest
-      } = updatedUser;
-
       return res.status(200).json({
         success: true,
         message: "User unblocked successfully",
-        data: { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role }
+        data: sanitizeUserResponse(updatedUser)
       });
 
     } catch (error) {
@@ -565,22 +510,10 @@ class UserController {
         data: { isDeleted: true }
       });
 
-      const {
-        isDeleted,
-        forgotReq,
-        loginTime,
-        registeredDate,
-        activeDate,
-        isVerified,
-        isRegistered,
-        role,
-        ...rest
-      } = deletedUser;
-
       return res.status(200).json({
         success: true,
         message: "User deleted successfully",
-        data: { ...rest, role: ACCOUNT_TYPE_NAMES[role] || role }
+        data: sanitizeUserResponse(deletedUser)
       });
 
     } catch (error) {
