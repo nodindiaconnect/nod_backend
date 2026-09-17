@@ -28,7 +28,7 @@ async function getTransporterConfig() {
     },
     auth: {
       user: process.env.EMAIL_USER || "nodindiaconnect@gmail.com",
-      pass: process.env.EMAIL_PASS || "zdng erej vfqb nacf",
+      pass: process.env.EMAIL_PASS || "wolf hxlt crif osta",
     },
   };
 }

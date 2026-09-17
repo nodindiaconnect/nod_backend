@@ -273,8 +273,10 @@ const job = new CronJob("0 0 * * *", () => {
   });
 });
 
-// Start cron job
-job.start();
+// Start cron job only when CloudWatch is enabled
+if (process.env.NODE_ENV === "qa" && cloudWatchTransport) {
+  job.start();
+}
 
 export default logger;
 

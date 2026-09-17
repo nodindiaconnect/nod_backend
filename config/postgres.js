@@ -54,33 +54,40 @@ import db from "../config/db.js"; // adjust path to wherever your db.js actually
 
 const { Pool } = pkg;
 
-console.log("========== PostgreSQL Config ==========");
-console.log("ENV:", db.env);
-console.log("DB_HOST:", db.DB_HOST);
-console.log("DB_PORT:", db.DB_PORT);
-console.log("DB_USER:", db.DB_USER);
-console.log("DB_NAME:", db.DB_NAME);
-console.log("DB_PASSWORD:", db.DB_PASSWORD ? "Loaded ✅" : "Not Found ❌");
-console.log("=======================================");
+let pgPool = null;
 
-const pgPool = new Pool(
-  db.DATABASE_URL
-    ? {
-        connectionString: db.DATABASE_URL,
-        ssl: db.env === "production" ? { rejectUnauthorized: false } : undefined,
-      }
-    : {
-        host: db.DB_HOST,
-        port: db.DB_PORT,
-        user: db.DB_USER,
-        password: db.DB_PASSWORD,
-        database: db.DB_NAME,
-      }
-);
+function getPgPool() {
+  if (!pgPool) {
+    pgPool = new Pool(
+      db.DATABASE_URL
+        ? {
+            connectionString: db.DATABASE_URL,
+            ssl: db.env === "production" ? { rejectUnauthorized: false } : undefined,
+          }
+        : {
+            host: db.DB_HOST,
+            port: db.DB_PORT,
+            user: db.DB_USER,
+            password: db.DB_PASSWORD,
+            database: db.DB_NAME,
+          }
+    );
+  }
+  return pgPool;
+}
 
 async function connectToPostgres() {
+  console.log("========== PostgreSQL Config ==========");
+  console.log("ENV:", db.env);
+  console.log("DB_HOST:", db.DB_HOST);
+  console.log("DB_PORT:", db.DB_PORT);
+  console.log("DB_USER:", db.DB_USER);
+  console.log("DB_NAME:", db.DB_NAME);
+  console.log("DB_PASSWORD:", db.DB_PASSWORD ? "Loaded ✅" : "Not Found ❌");
+  console.log("=======================================");
+
   try {
-    const client = await pgPool.connect();
+    const client = await getPgPool().connect();
 
     console.log("✅ PostgreSQL Connected Successfully!");
     console.log("Env:", db.env);
@@ -102,4 +109,4 @@ async function connectToPostgres() {
   }
 }
 
-export { pgPool, connectToPostgres };
+export { pgPool, getPgPool, connectToPostgres };
