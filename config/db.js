@@ -30,7 +30,7 @@ if (process.env.NODE_ENV === "development") {
   db.frontEndBaseURL = process.env.FRONTEND_BASE_URL_PROD;
 
   // Auth
-  db.JWT_SK = process.env.JWT_SK_PROD;
+  db.JWT_SK = process.env.JWT_SK_PROD || process.env.JWT_SK || "3afb3875be5526c6c13aebfe449431e3fdbee46d77bf60c0f693ad44118c9031";
 
   // Postgres
   db.DB_HOST = process.env.DB_HOST_PROD;

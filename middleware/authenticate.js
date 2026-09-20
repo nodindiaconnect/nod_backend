@@ -3,7 +3,11 @@ import helper from "../helper/helper.js";
 import prisma from "../config/prismaClient.js";
 import db from "../config/db.js";
 
-const getJwtSecret = () => db?.JWT_SK || process.env.JWT_SK || process.env.JWT_SK_PROD || "3afb3875be5526c6c13aebfe449431e3fdbee46d77bf60c0f693ad44118c9031";
+export const getJwtSecret = () =>
+  process.env.JWT_SK ||
+  db?.JWT_SK ||
+  process.env.JWT_SK_PROD ||
+  "3afb3875be5526c6c13aebfe449431e3fdbee46d77bf60c0f693ad44118c9031";
 
 export const Auth = async (req, res, next) => {
   try {
@@ -161,7 +165,7 @@ export const socketAuth = async (socket, next) => {
       return next(new Error("Authentication failed"));
     }
 
-    const decoded = Jwt.verify(token, process.env.JWT_SK);
+    const decoded = Jwt.verify(token, getJwtSecret());
 
 
     const findUser = await prisma.user.findUnique({

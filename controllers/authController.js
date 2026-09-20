@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import axios from "axios";
 import JWT from "jsonwebtoken";
+import { getJwtSecret } from "../middleware/authenticate.js";
 import prisma from "../config/prismaClient.js";
 import db from "../config/db.js";
 import helper from "../helper/helper.js";
@@ -1080,7 +1081,7 @@ class authController {
           loginTime,
           exp: Math.floor(Date.now() / 1000) + 60 * 15,
         },
-        process.env.JWT_SK,
+        getJwtSecret(),
       );
 
       await sessionStore.destroy(session.id);
@@ -1124,9 +1125,9 @@ class authController {
         });
         if (!user) return helper.success(res, GENERIC_RESEND_MESSAGE, {});
 
-        await issueOtp(user.id, "register");
+        const code = await issueOtp(user.id, "register");
         await emailService
-          .sendOtpMail(user.email, user.name, undefined, "register")
+          .sendOtpMail(user.email, user.name, code, "register")
           .catch(() => {});
         return helper.success(res, GENERIC_RESEND_MESSAGE, {});
       }
@@ -1142,9 +1143,9 @@ class authController {
         });
         if (!user) return helper.success(res, GENERIC_RESEND_MESSAGE, {});
 
-        await issueOtp(user.id, "forgotPassword");
+        const code = await issueOtp(user.id, "forgotPassword");
         await emailService
-          .sendOtpMail(user.email, user.name, undefined, "forgotPassword")
+          .sendOtpMail(user.email, user.name, code, "forgotPassword")
           .catch(() => {});
         return helper.success(res, GENERIC_RESEND_MESSAGE, {});
       }
@@ -1420,7 +1421,7 @@ class authController {
           loginTime,
           exp: Math.floor(Date.now() / 1000) + 60 * 15,
         },
-        process.env.JWT_SK,
+        getJwtSecret(),
       );
 
       updatedUser.token = token;
@@ -1534,7 +1535,7 @@ class authController {
           loginTime,
           exp: Math.floor(Date.now() / 1000) + 60 * 15,
         },
-        process.env.JWT_SK,
+        getJwtSecret(),
       );
 
       updatedUser.token = token;
@@ -1557,7 +1558,7 @@ class authController {
       if (!decoded || !decoded.id)
         return res.status(403).json({ message: "Invalid Refresh Token" });
 
-      const jwtSecret = db?.JWT_SK || process.env.JWT_SK || process.env.JWT_SK_PROD || "3afb3875be5526c6c13aebfe449431e3fdbee46d77bf60c0f693ad44118c9031";
+      const jwtSecret = getJwtSecret();
 
       try {
         JWT.verify(expiredToken, jwtSecret, { ignoreExpiration: true });
