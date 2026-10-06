@@ -1,5 +1,6 @@
 import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
+import { containsContactInfo } from "../utils/validators.js";
 
 function safeJsonParse(val, fallback = {}) {
   if (!val) return fallback;
@@ -21,7 +22,8 @@ function formatPortfolioUser(user) {
   let specialization = user.specialization || null;
   let specializations = [];
   let bio = rawProfile.bio || null;
-  let experience = rawProfile.experience !== undefined ? Number(rawProfile.experience) : null;
+  let experience =
+    rawProfile.experience !== undefined ? Number(rawProfile.experience) : null;
   let experienceLevel = null;
   let rating = user.ratingCache ?? 0;
   let totalReviews = user._count?.reviewsReceived ?? 0;
@@ -45,13 +47,18 @@ function formatPortfolioUser(user) {
   if (roleNum === 2) {
     // ── DESIGNER ──
     const d = user.designer || {};
-    category = d.category || user.category || rawProfile.category || "Interior Design";
+    category =
+      d.category || user.category || rawProfile.category || "Interior Design";
     specializations = Array.isArray(d.specializations)
       ? d.specializations
       : typeof d.specializations === "string"
         ? safeJsonParse(d.specializations, [])
         : [];
-    specialization = specializations[0] || user.specialization || rawProfile.specialization || "Interior Designer";
+    specialization =
+      specializations[0] ||
+      user.specialization ||
+      rawProfile.specialization ||
+      "Interior Designer";
     designStyles = Array.isArray(d.designStyles)
       ? d.designStyles
       : typeof d.designStyles === "string"
@@ -62,47 +69,80 @@ function formatPortfolioUser(user) {
     if (d.yearsOfExperience !== undefined && d.yearsOfExperience !== null) {
       experience = Number(d.yearsOfExperience);
     }
-    experienceLevel = d.experienceLevel || (experience >= 8 ? "EXPERT" : experience >= 4 ? "ADVANCED" : experience >= 2 ? "INTERMEDIATE" : "BEGINNER");
+    experienceLevel =
+      d.experienceLevel ||
+      (experience >= 8
+        ? "EXPERT"
+        : experience >= 4
+          ? "ADVANCED"
+          : experience >= 2
+            ? "INTERMEDIATE"
+            : "BEGINNER");
     if (d.rating) rating = Number(d.rating);
     if (d.totalReviews) totalReviews = Number(d.totalReviews);
-    serviceCities = Array.isArray(d.serviceCities) ? d.serviceCities : safeJsonParse(d.serviceCities, []);
-    portfolioLinks = Array.isArray(d.portfolioLinks) ? d.portfolioLinks : safeJsonParse(d.portfolioLinks, []);
+    serviceCities = Array.isArray(d.serviceCities)
+      ? d.serviceCities
+      : safeJsonParse(d.serviceCities, []);
+    portfolioLinks = Array.isArray(d.portfolioLinks)
+      ? d.portfolioLinks
+      : safeJsonParse(d.portfolioLinks, []);
     photos = Array.isArray(d.photos) ? d.photos : safeJsonParse(d.photos, []);
   } else if (roleNum === 3) {
     // ── ARCHITECT ──
     const a = user.architect || {};
     category = "Architecture";
-    specializations = typeof a.specializations === "string"
-      ? safeJsonParse(a.specializations, [])
-      : Array.isArray(a.specializations)
-        ? a.specializations
-        : [];
-    specialization = specializations[0] || user.specialization || rawProfile.specialization || "Architectural Design";
-    certifications = typeof a.certifications === "string"
-      ? safeJsonParse(a.certifications, [])
-      : Array.isArray(a.certifications)
-        ? a.certifications
-        : [];
+    specializations =
+      typeof a.specializations === "string"
+        ? safeJsonParse(a.specializations, [])
+        : Array.isArray(a.specializations)
+          ? a.specializations
+          : [];
+    specialization =
+      specializations[0] ||
+      user.specialization ||
+      rawProfile.specialization ||
+      "Architectural Design";
+    certifications =
+      typeof a.certifications === "string"
+        ? safeJsonParse(a.certifications, [])
+        : Array.isArray(a.certifications)
+          ? a.certifications
+          : [];
     software = certifications[0] || rawProfile.software || "AutoCAD";
     bio = a.bio || rawProfile.bio || null;
     if (a.yearsOfExperience !== undefined && a.yearsOfExperience !== null) {
       experience = Number(a.yearsOfExperience);
     }
-    experienceLevel = a.experienceLevel || (experience >= 8 ? "EXPERT" : experience >= 4 ? "ADVANCED" : experience >= 2 ? "INTERMEDIATE" : "BEGINNER");
+    experienceLevel =
+      a.experienceLevel ||
+      (experience >= 8
+        ? "EXPERT"
+        : experience >= 4
+          ? "ADVANCED"
+          : experience >= 2
+            ? "INTERMEDIATE"
+            : "BEGINNER");
     licenseNumber = a.licenseNumber || null;
     if (a.rating) rating = Number(a.rating);
     if (a.totalReviews) totalReviews = Number(a.totalReviews);
-    serviceCities = typeof a.serviceCities === "string" ? safeJsonParse(a.serviceCities, []) : (a.serviceCities || []);
-    portfolioLinks = typeof a.portfolioLinks === "string" ? safeJsonParse(a.portfolioLinks, []) : (a.portfolioLinks || []);
+    serviceCities =
+      typeof a.serviceCities === "string"
+        ? safeJsonParse(a.serviceCities, [])
+        : a.serviceCities || [];
+    portfolioLinks =
+      typeof a.portfolioLinks === "string"
+        ? safeJsonParse(a.portfolioLinks, [])
+        : a.portfolioLinks || [];
   } else if (roleNum === 4) {
     // ── CONTRACTOR ──
     const c = user.contractor || {};
     category = "Construction & Contracting";
-    workTypes = typeof c.workTypes === "string"
-      ? safeJsonParse(c.workTypes, [])
-      : Array.isArray(c.workTypes)
-        ? c.workTypes
-        : [];
+    workTypes =
+      typeof c.workTypes === "string"
+        ? safeJsonParse(c.workTypes, [])
+        : Array.isArray(c.workTypes)
+          ? c.workTypes
+          : [];
     trade = workTypes[0] || rawProfile.trade || "General Contractor";
     specialization = trade;
     specializations = workTypes;
@@ -110,24 +150,44 @@ function formatPortfolioUser(user) {
     if (c.yearsOfExperience !== undefined && c.yearsOfExperience !== null) {
       experience = Number(c.yearsOfExperience);
     }
-    experienceLevel = c.experienceLevel || (experience >= 8 ? "EXPERT" : experience >= 4 ? "ADVANCED" : experience >= 2 ? "INTERMEDIATE" : "BEGINNER");
+    experienceLevel =
+      c.experienceLevel ||
+      (experience >= 8
+        ? "EXPERT"
+        : experience >= 4
+          ? "ADVANCED"
+          : experience >= 2
+            ? "INTERMEDIATE"
+            : "BEGINNER");
     teamSize = c.teamSize ?? null;
     licenseNumber = c.licenseNumber || null;
     gstNumber = c.gstNumber || null;
     if (c.rating) rating = Number(c.rating);
     if (c.totalReviews) totalReviews = Number(c.totalReviews);
-    serviceCities = typeof c.serviceCities === "string" ? safeJsonParse(c.serviceCities, []) : (c.serviceCities || []);
-    portfolioLinks = typeof c.portfolioLinks === "string" ? safeJsonParse(c.portfolioLinks, []) : (c.portfolioLinks || []);
+    serviceCities =
+      typeof c.serviceCities === "string"
+        ? safeJsonParse(c.serviceCities, [])
+        : c.serviceCities || [];
+    portfolioLinks =
+      typeof c.portfolioLinks === "string"
+        ? safeJsonParse(c.portfolioLinks, [])
+        : c.portfolioLinks || [];
   } else if (roleNum === 5) {
     // ── MATERIAL SUPPLIER ──
     const s = user.contactDetails || {};
-    businessName = s.shopName || rawProfile.businessName || user.name || "Building Material Supplier";
+    businessName =
+      s.shopName ||
+      rawProfile.businessName ||
+      user.name ||
+      "Building Material Supplier";
     ownerName = rawProfile.ownerName || user.name;
     businessType = rawProfile.businessType || "Material Supplier";
     category = "Material Supply";
     specialization = businessType;
     specializations = [businessType];
-    bio = rawProfile.bio || "Authorized supplier of quality architectural & construction materials";
+    bio =
+      rawProfile.bio ||
+      "Authorized supplier of quality architectural & construction materials";
   }
 
   // Synthesize unified profile object
@@ -160,7 +220,8 @@ function formatPortfolioUser(user) {
   };
 
   const locationParts = [user.city, user.state, user.country].filter(Boolean);
-  const locationStr = locationParts.length > 0 ? locationParts.join(", ") : "India";
+  const locationStr =
+    locationParts.length > 0 ? locationParts.join(", ") : "India";
   const roleNameMap = {
     1: "Client",
     2: "Interior Designer",
@@ -190,16 +251,29 @@ function formatPortfolioUser(user) {
     ratingCache: user.ratingCache ?? rating ?? 0,
     ratingStats: user.ratingStats || null,
     profile: unifiedProfile,
+    isVerified: Boolean(user.isVerified),
+    isVerify: Boolean(user.isVerified),
     createdAt: user.createdAt,
     registeredDate: user.registeredDate,
     posts: (() => {
       let userPosts = user.posts || [];
-      if (roleNum === 5 && Array.isArray(user.products) && user.products.length > 0) {
+      if (
+        roleNum === 5 &&
+        Array.isArray(user.products) &&
+        user.products.length > 0
+      ) {
         const productPosts = user.products.map((p) => ({
           id: p.id,
           title: p.productName,
-          description: p.description || `${p.category || "Material"} - ₹${p.price}/${p.unit}`,
-          images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.thumbnail ? [p.thumbnail] : []),
+          description:
+            p.description ||
+            `${p.category || "Material"} - ₹${p.price}/${p.unit}`,
+          images:
+            Array.isArray(p.images) && p.images.length > 0
+              ? p.images
+              : p.thumbnail
+                ? [p.thumbnail]
+                : [],
           createdAt: p.createdAt,
           price: p.price,
           discountPrice: p.discountPrice,
@@ -212,7 +286,8 @@ function formatPortfolioUser(user) {
           availability: p.availability,
           isProduct: true,
         }));
-        userPosts = userPosts.length > 0 ? [...userPosts, ...productPosts] : productPosts;
+        userPosts =
+          userPosts.length > 0 ? [...userPosts, ...productPosts] : productPosts;
       }
       return userPosts;
     })(),
@@ -223,7 +298,9 @@ function formatPortfolioUser(user) {
     contactDetails: user.contactDetails || null,
     products: user.products || [],
     _count: {
-      posts: (user.posts?.length || 0) + (roleNum === 5 && user.products ? user.products.length : 0),
+      posts:
+        (user.posts?.length || 0) +
+        (roleNum === 5 && user.products ? user.products.length : 0),
       followers: user.followers?.length || 0,
       following: 0,
       products: user.products?.length || user._count?.products || 0,
@@ -238,6 +315,7 @@ const PORTFOLIO_SELECT_FIELDS = {
   username: true,
   profile: true,
   role: true,
+  isVerified: true,
   country: true,
   state: true,
   city: true,
@@ -387,6 +465,24 @@ class PostController {
         );
       }
 
+      const titleContactCheck = containsContactInfo(title);
+      if (titleContactCheck.hasContact) {
+        return helper.failed(
+          res,
+          titleContactCheck.reason ||
+            "Posting phone numbers or email addresses in the post title is not permitted.",
+        );
+      }
+
+      const descContactCheck = containsContactInfo(description);
+      if (descContactCheck.hasContact) {
+        return helper.failed(
+          res,
+          descContactCheck.reason ||
+            "Posting phone numbers or email addresses in the post description is not permitted.",
+        );
+      }
+
       const post = await prisma.post.create({
         data: { userId, title, description, images },
       });
@@ -424,6 +520,28 @@ class PostController {
       if (!post) return helper.failed(res, "Post not found", {}, 404);
       if (post.userId !== userId)
         return helper.failed(res, "Not authorized to edit this post", {}, 403);
+
+      if (title !== undefined) {
+        const titleContactCheck = containsContactInfo(title);
+        if (titleContactCheck.hasContact) {
+          return helper.failed(
+            res,
+            titleContactCheck.reason ||
+              "Posting phone numbers or email addresses in the post title is not permitted.",
+          );
+        }
+      }
+
+      if (description !== undefined) {
+        const descContactCheck = containsContactInfo(description);
+        if (descContactCheck.hasContact) {
+          return helper.failed(
+            res,
+            descContactCheck.reason ||
+              "Posting phone numbers or email addresses in the post description is not permitted.",
+          );
+        }
+      }
 
       const updated = await prisma.post.update({
         where: { id: postId },
@@ -496,6 +614,7 @@ class PostController {
         orderBy: [{ posts: { _count: "desc" } }, { createdAt: "desc" }],
       });
 
+      console.log(rawUsers, "rawUsers");
       const formattedUsers = rawUsers.map(formatPortfolioUser);
 
       return helper.success(res, "Portfolios fetched successfully", {
@@ -539,7 +658,8 @@ class PostController {
           where: { id: userId },
           select: { role: true },
         });
-        const roleNum = typeof user?.role === "string" ? parseInt(user.role, 10) : user?.role;
+        const roleNum =
+          typeof user?.role === "string" ? parseInt(user.role, 10) : user?.role;
         if (roleNum === 5) {
           const [products, productCount] = await Promise.all([
             prisma.product.findMany({
@@ -556,8 +676,15 @@ class PostController {
           posts = products.map((p) => ({
             id: p.id,
             title: p.productName,
-            description: p.description || `${p.category || "Material"} - ₹${p.price}/${p.unit}`,
-            images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.thumbnail ? [p.thumbnail] : []),
+            description:
+              p.description ||
+              `${p.category || "Material"} - ₹${p.price}/${p.unit}`,
+            images:
+              Array.isArray(p.images) && p.images.length > 0
+                ? p.images
+                : p.thumbnail
+                  ? [p.thumbnail]
+                  : [],
             createdAt: p.createdAt,
             price: p.price,
             discountPrice: p.discountPrice,

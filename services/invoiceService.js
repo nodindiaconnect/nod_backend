@@ -84,6 +84,29 @@ class InvoiceService {
         });
 
         logger.info(`[InvoiceService] Generated invoice ${invoiceNumber} for project ${projectId}`);
+
+        // Asynchronously generate PDF and dispatch Invoice Email to Client
+        (async () => {
+            try {
+                if (client?.email) {
+                    const InvoicePdfService = (await import("./invoicePdfService.js")).default;
+                    const emailService = (await import("../helper/emailService.js")).default;
+                    const project = await prisma.project.findUnique({ where: { id: projectId } });
+                    const pdfBuffer = await InvoicePdfService.generateInvoicePdfBuffer(invoice.id, { role: 0 });
+                    await emailService.sendInvoiceMail({
+                        email: client.email,
+                        name: client.name,
+                        invoice,
+                        project,
+                        pdfBuffer,
+                    });
+                    logger.info(`[InvoiceService] Invoice ${invoiceNumber} emailed successfully to ${client.email}`);
+                }
+            } catch (mailErr) {
+                logger.error(`[InvoiceService] Non-fatal error sending invoice email: ${mailErr.message}`);
+            }
+        })();
+
         return invoice;
     }
 

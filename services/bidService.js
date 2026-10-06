@@ -1,6 +1,7 @@
 import prisma from "../config/prismaClient.js";
 import sanitizeData from "../utils/sanitizeHtml.js";
 import ChatService from "./chatService.js";
+import { containsContactInfo } from "../utils/validators.js";
 
 const ROLE_TO_SERVICE_TYPE = {
     2: "INTERIOR_DESIGNER",
@@ -54,6 +55,11 @@ class BidService {
             throw new Error("Proposal description must be at least 10 characters");
         }
 
+        const proposalCheck = containsContactInfo(proposal);
+        if (proposalCheck.hasContact) {
+            throw new Error(proposalCheck.reason || "Sharing phone numbers or email addresses in proposals is not permitted.");
+        }
+
         // 1. Fetch Project
         const project = await prisma.project.findUnique({
             where: { id: projectId },
@@ -92,7 +98,19 @@ class BidService {
             throw new Error(`A professional has already been selected for ${serviceType.replace(/_/g, " ")} on this project`);
         }
 
-        // 3. Prevent duplicate active bids
+        // 3. Check that professional has completed bank / payout details
+        const bankDetail = await prisma.bankDetail.findUnique({
+            where: { userId: user.id },
+        });
+
+        if (!bankDetail || !bankDetail.accountNumber || !bankDetail.ifscCode) {
+            const err = new Error("BANK_DETAILS_REQUIRED: Please add your Bank / UPI details before submitting proposals so milestone payouts can be disbursed to you.");
+            err.statusCode = 428;
+            err.code = "BANK_DETAILS_REQUIRED";
+            throw err;
+        }
+
+        // 4. Prevent duplicate active bids
         const existingActiveBid = await prisma.bid.findFirst({
             where: {
                 projectId,
@@ -219,6 +237,10 @@ class BidService {
         if (updateData.proposal !== undefined) {
             if (String(updateData.proposal).trim().length < 10) {
                 throw new Error("Proposal must be at least 10 characters");
+            }
+            const proposalCheck = containsContactInfo(updateData.proposal);
+            if (proposalCheck.hasContact) {
+                throw new Error(proposalCheck.reason || "Sharing phone numbers or email addresses in proposals is not permitted.");
             }
             data.proposal = sanitizeData(String(updateData.proposal).trim());
         }
@@ -456,11 +478,22 @@ class BidService {
                     },
                 });
 
-                // Create Contract with milestone schedule
+                // Create Contract with stage-wise milestone schedule (30% / 40% / 30%)
                 const totalAmount = Number(bid.quotedPrice || bid.amount || 0);
-                const m1Amount = Math.round(totalAmount * 0.3);
-                const m2Amount = Math.round(totalAmount * 0.4);
-                const m3Amount = totalAmount - (m1Amount + m2Amount);
+                const m1Amount = Math.round(totalAmount * 0.30); // Phase 1: 30%
+                const m2Amount = Math.round(totalAmount * 0.40); // Phase 2: 40%
+                const m3Amount = totalAmount - (m1Amount + m2Amount); // Phase 3: 30%
+
+                // Lock the Approved Project Amount on Project and require 100% upfront escrow payment
+                await tx.project.update({
+                    where: { id: project.id },
+                    data: {
+                        status: "PAYMENT_REQUIRED",
+                        approvedProjectAmount: totalAmount,
+                        amountApprovedAt: new Date(),
+                        amountApprovedById: clientId,
+                    },
+                });
 
                 const roleName = serviceType.replace(/_/g, " ").toLowerCase();
                 const contract = await tx.contract.create({
@@ -468,29 +501,32 @@ class BidService {
                         awardId: award.id,
                         scopeDescription: `Contract for ${serviceType.replace(/_/g, " ")}: ${bid.proposal ? bid.proposal.slice(0, 200) : "Project execution"}`,
                         totalAmount,
-                        status: "ACTIVE",
+                        status: "DRAFT", // Activated upon 100% upfront escrow payment
                         milestones: {
                             create: [
                                 {
                                     sequence: 1,
-                                    title: `Phase 1: Initial Planning & Blueprints (${serviceType.replace(/_/g, " ")})`,
-                                    description: `Initial site analysis, architectural layouts/specifications, and scope sign-off.`,
+                                    title: `Phase 1: Initial Submission & Concepts (30%)`,
+                                    description: `Initial floor plans, basic layouts, basic 3D, and design concept deliverables.`,
                                     amount: m1Amount,
                                     status: "PENDING",
+                                    allowedRevisionCount: 1,
                                 },
                                 {
                                     sequence: 2,
-                                    title: `Phase 2: Core Execution & Mid-point Deliverables`,
-                                    description: `50% execution milestone and intermediate verification.`,
+                                    title: `Phase 2: Core Specifications & Detailed Drawings (40%)`,
+                                    description: `First permitted revision cycle, core execution drawings, and intermediate specifications.`,
                                     amount: m2Amount,
                                     status: "PENDING",
+                                    allowedRevisionCount: 1,
                                 },
                                 {
                                     sequence: 3,
-                                    title: `Phase 3: Final Detailing & Handover Inspection`,
-                                    description: `Final quality inspection, snag list resolution, and client handover.`,
+                                    title: `Phase 3: Detailed Development & Final Submission (30%)`,
+                                    description: `Detailed layouts, 3D renders, material details, and final completion handover.`,
                                     amount: m3Amount,
                                     status: "PENDING",
+                                    allowedRevisionCount: 1,
                                 },
                             ],
                         },
@@ -628,6 +664,35 @@ class BidService {
 
             await ChatService.getOrCreateDirectChat(project.id, clientId, proUserId, bid.id);
             await ChatService.getOrCreateProjectTeamChat(project.id, clientId);
+
+            // 4. Share contractor / pro direct contact details with client via email
+            (async () => {
+                try {
+                    const emailService = (await import("../helper/emailService.js")).default;
+                    const clientUser = await prisma.user.findUnique({ where: { id: clientId } });
+                    const proUser = await prisma.user.findUnique({
+                        where: { id: proUserId },
+                        include: { contractor: true, architect: true, designer: true },
+                    });
+
+                    if (clientUser?.email && proUser?.email) {
+                        await emailService.sendContractorConnectionMail({
+                            clientEmail: clientUser.email,
+                            clientName: clientUser.name,
+                            contractorUser: proUser,
+                            project,
+                        });
+                        await emailService.sendContractorAlertMail({
+                            contractorEmail: proUser.email,
+                            contractorName: proUser.name,
+                            clientUser,
+                            project,
+                        });
+                    }
+                } catch (emailErr) {
+                    console.error("[BidService] Non-fatal error sending contact sharing email:", emailErr);
+                }
+            })();
         } catch (postErr) {
             console.error("Post-award non-fatal error:", postErr);
         }

@@ -6,6 +6,11 @@ import SystemConfigService from "./systemConfigService.js";
 import PaymentCalculationService from "./paymentCalculationService.js";
 import InvoiceService from "./invoiceService.js";
 import WalletService from "./walletService.js";
+import TaxService from "./taxService.js";
+import FinancialLedgerService from "./financialLedgerService.js";
+import crypto from "crypto";
+import { getRazorpayInstance, getRazorpayKeyId, getRazorpayKeySecret } from "../config/razorpay.js";
+
 
 class EscrowService {
     /**
@@ -495,26 +500,145 @@ class EscrowService {
     }
 
     /**
-     * Unified Milestone Payment Engine (1: 50% Advance + Fee, 2: 25% Second, 3: 25% Final)
+     * Create Razorpay Standard Payment Order for Milestone (1: 50% Advance, 2: 25% Second, 3: 25% Final)
      */
-    static async payMilestone(user, projectId, milestoneSequence = 1, data = {}) {
-        const seq = Number(milestoneSequence);
-        const summary = await PaymentCalculationService.calculateProjectPaymentSummary(projectId);
-
-        if (seq === 1) {
-            return await EscrowService.confirmInitialEscrowPayment(user, projectId, data);
+    static async createMilestonePaymentOrder(user, projectId, milestoneSequence, idempotencyKey = null) {
+        const seq = parseInt(milestoneSequence, 10);
+        if (![1, 2, 3].includes(seq)) {
+            throw new Error(`Invalid milestone sequence: ${milestoneSequence}. Must be 1, 2, or 3.`);
         }
 
         const project = await prisma.project.findUnique({
             where: { id: projectId },
             include: {
-                client: true,
+                client: { select: { id: true, name: true, email: true, phone: true } },
+                escrow: true,
+                awards: {
+                    include: {
+                        contract: {
+                            include: { milestones: true },
+                        },
+                    },
+                },
+            },
+        });
+
+        if (!project || project.isDeleted) throw new Error("Project not found");
+        if (project.clientId !== user.id && user.role !== 0) {
+            throw new Error("Unauthorized: Only the project client can pay for milestones");
+        }
+
+        const summary = await PaymentCalculationService.calculateProjectPaymentSummary(projectId);
+        const targetMilestoneData = summary.milestones.find((m) => m.sequence === seq);
+        if (!targetMilestoneData) {
+            throw new Error(`Milestone sequence ${seq} not found on project`);
+        }
+
+        if (targetMilestoneData.isPaid) {
+            throw new Error(`Milestone ${seq} has already been paid`);
+        }
+
+        if (targetMilestoneData.isLocked) {
+            throw new Error(`Milestone ${seq} is locked: ${targetMilestoneData.lockReasons.join("; ")}`);
+        }
+
+        const payableAmount = targetMilestoneData.totalPayable;
+        const amountInPaise = Math.round(payableAmount * 100);
+
+        let razorpayOrderId = null;
+        const razorpayKeyId = getRazorpayKeyId();
+
+        try {
+            const rzp = getRazorpayInstance();
+            const order = await rzp.orders.create({
+                amount: amountInPaise,
+                currency: "INR",
+                receipt: `rcpt_${projectId.slice(0, 8)}_ms${seq}_${Date.now()}`,
+                notes: {
+                    projectId,
+                    milestoneSequence: seq,
+                    clientId: user.id,
+                    projectTitle: (project.title || "Nod Project").slice(0, 40),
+                },
+            });
+            razorpayOrderId = order.id;
+        } catch (rzpErr) {
+            logger.warn(`[EscrowService] Razorpay order creation failed: ${rzpErr.message}. Fallback to simulated order.`);
+            razorpayOrderId = `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        }
+
+        // Safely resolve matched milestone ID if milestone exists in DB
+        let matchedMilestoneId = null;
+        for (const award of project.awards || []) {
+            const m = award.contract?.milestones?.find((ms) => ms.sequence === seq);
+            if (m) {
+                matchedMilestoneId = m.id;
+                break;
+            }
+        }
+        if (!matchedMilestoneId) {
+            const dbMilestone = await prisma.milestone.findFirst({
+                where: {
+                    contract: { award: { projectId } },
+                    sequence: seq,
+                },
+                select: { id: true },
+            });
+            if (dbMilestone) matchedMilestoneId = dbMilestone.id;
+        }
+
+        // Upsert tracking payment record in DB
+        const paymentRecord = await prisma.payment.create({
+            data: {
+                projectId: project.id,
+                milestoneId: matchedMilestoneId || null,
+                gateway: "RAZORPAY",
+                gatewayOrderId: razorpayOrderId,
+                amount: payableAmount,
+                currency: "INR",
+                status: "CREATED",
+                idempotencyKey: idempotencyKey || `idemp_${projectId}_ms${seq}_${Date.now()}`,
+            },
+        });
+
+        return {
+            orderId: razorpayOrderId,
+            paymentRecordId: paymentRecord.id,
+            amount: amountInPaise,
+            payableAmount,
+            currency: "INR",
+            keyId: razorpayKeyId,
+            milestoneSequence: seq,
+            milestoneTitle: targetMilestoneData.title,
+            projectTitle: project.title,
+            client: {
+                name: project.client?.name || user.name || "Client",
+                email: project.client?.email || user.email || "",
+                phone: project.client?.phone || user.phone || "",
+            },
+        };
+    }
+
+    /**
+     * Unified Milestone Payment Execution (1: 50% Advance, 2: 25% Second, 3: 25% Final)
+     * Executes atomic escrow hold, HMAC SHA256 signature verification, and ledger recording
+     */
+    static async payMilestone(user, projectId, milestoneSequence, data = {}) {
+        const seq = parseInt(milestoneSequence, 10);
+        if (![1, 2, 3].includes(seq)) {
+            throw new Error(`Invalid milestone sequence: ${milestoneSequence}. Must be 1, 2, or 3.`);
+        }
+
+        const summary = await PaymentCalculationService.calculateProjectPaymentSummary(projectId);
+        const project = await prisma.project.findUnique({
+            where: { id: projectId },
+            include: {
                 escrow: true,
                 awards: {
                     include: {
                         contract: {
                             include: {
-                                milestones: { orderBy: { sequence: "asc" } },
+                                milestones: true,
                             },
                         },
                         bid: {
@@ -549,7 +673,32 @@ class EscrowService {
         }
 
         const payableAmount = targetMilestoneData.totalPayable;
-        const txnRef = data.gatewayPaymentId || data.referenceId || `txn_ms${seq}_${Date.now()}`;
+        const {
+            razorpay_payment_id,
+            razorpay_order_id,
+            razorpay_signature,
+            gatewayPaymentId,
+            referenceId,
+        } = data;
+
+        // Verify Razorpay HMAC SHA256 signature if payment was made through Razorpay Checkout
+        if (razorpay_payment_id && razorpay_order_id && razorpay_signature) {
+            const keySecret = getRazorpayKeySecret();
+            if (keySecret) {
+                const expectedSignature = crypto
+                    .createHmac("sha256", keySecret)
+                    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+                    .digest("hex");
+
+                if (expectedSignature !== razorpay_signature) {
+                    throw new Error("Payment signature verification failed. Invalid or fraudulent transaction.");
+                }
+                logger.info(`[EscrowService] Razorpay signature verified successfully for payment ${razorpay_payment_id}`);
+            }
+        }
+
+        const effectivePaymentId = razorpay_payment_id || gatewayPaymentId || referenceId || `pay_${Date.now()}`;
+        const effectiveGateway = (razorpay_payment_id || razorpay_order_id) ? "RAZORPAY" : (data.gateway || "RAZORPAY");
 
         const result = await prisma.$transaction(async (tx) => {
             // 1. Update matching milestones across all project contracts
@@ -566,14 +715,43 @@ class EscrowService {
                 }
             }
 
-            // 2. Increment Escrow Held Balance & record transaction in ProjectEscrow
+            // 2. Mark Payment record as CAPTURED if order exists
+            if (razorpay_order_id) {
+                await tx.payment.updateMany({
+                    where: { gatewayOrderId: razorpay_order_id },
+                    data: {
+                        status: "CAPTURED",
+                        gatewayPaymentId: effectivePaymentId,
+                    },
+                });
+            }
+
+            // 3. Increment Escrow Held Balance & record transaction in ProjectEscrow
             const escrow = project.escrow || (await EscrowService.initializeOrUpdateProjectEscrow(projectId, tx));
             await tx.projectEscrow.update({
                 where: { id: escrow.id },
                 data: {
-                    escrowBalance: { increment: payableAmount },
-                    status: seq === 3 ? "COMPLETED" : "IN_PROGRESS",
+                    escrowBalance: { increment: targetMilestoneData.baseAmount },
+                    status: "FUNDED",
+                    initialDepositPaid: targetMilestoneData.baseAmount,
+                    platformFeePaid: true,
                 },
+            });
+
+            // Activate Project, Contracts, and Specialist Team Members upon 100% upfront escrow funding
+            await tx.project.update({
+                where: { id: projectId },
+                data: { status: "IN_PROGRESS" },
+            });
+
+            await tx.contract.updateMany({
+                where: { award: { projectId } },
+                data: { status: "ACTIVE" },
+            });
+
+            await tx.projectTeam.updateMany({
+                where: { projectId },
+                data: { status: "ACTIVE" },
             });
 
             await tx.projectEscrowTransaction.create({
@@ -581,26 +759,56 @@ class EscrowService {
                     escrowId: escrow.id,
                     type: seq === 3 ? "FINAL_RELEASE" : "ESCROW_HOLD",
                     amount: payableAmount,
-                    platformFee: 0,
+                    platformFee: seq === 1 ? (targetMilestoneData.platformFeeAmount || 0) : 0,
                     userId: user.id,
-                    description: `Client paid Milestone ${seq} (${targetMilestoneData.title}): ${project.title}`,
-                    referenceId: txnRef,
+                    description: `Client paid Milestone ${seq} (${targetMilestoneData.title}) via ${effectiveGateway}: ${project.title}`,
+                    referenceId: effectivePaymentId,
                     status: "COMPLETED",
                 },
             });
 
-            // 4. If Milestone 3, mark project as COMPLETED
+            // 4. Record in immutable Financial Transaction Ledger
+            await FinancialLedgerService.recordTransaction({
+                projectId: project.id,
+                userId: user.id,
+                type: "MILESTONE_PAYMENT",
+                amount: payableAmount,
+                gateway: effectiveGateway,
+                gatewayTransactionId: effectivePaymentId,
+                status: "COMPLETED",
+                metadata: {
+                    milestoneSequence: seq,
+                    orderId: razorpay_order_id || null,
+                    signatureVerified: Boolean(razorpay_signature),
+                },
+            }, tx);
+
+            if (seq === 1 && targetMilestoneData.platformFeeAmount > 0) {
+                await tx.platformRevenue.create({
+                    data: {
+                        projectId: project.id,
+                        escrowId: escrow.id,
+                        amount: targetMilestoneData.platformFeeAmount,
+                        source: "PROJECT_PLATFORM_FEE_5_PERCENT",
+                        description: `Platform fee on Milestone 1 for project ${project.title}`,
+                        referenceId: effectivePaymentId,
+                    },
+                });
+            }
+
+            // 5. If Milestone 3, mark project as COMPLETED and unlock downloads!
             if (seq === 3) {
                 await tx.project.update({
                     where: { id: projectId },
                     data: {
                         status: "COMPLETED",
                         availabilityStatus: "CLOSED",
+                        downloadEnabled: true,
                     },
                 });
             }
 
-            // 5. Generate automated Invoice
+            // 6. Generate automated Invoice
             const invoice = await InvoiceService.createMilestoneInvoice(tx, {
                 projectId: project.id,
                 clientId: user.id,
@@ -608,13 +816,13 @@ class EscrowService {
                 milestoneTitle: targetMilestoneData.title,
                 milestonePercentage: targetMilestoneData.percentage,
                 totalProjectValue: summary.totalProjectValue,
-                milestoneAmount: payableAmount,
-                platformFeeRate: 0,
-                platformFeeAmount: 0,
+                milestoneAmount: targetMilestoneData.baseAmount,
+                platformFeeRate: targetMilestoneData.platformFeeRate || 0,
+                platformFeeAmount: targetMilestoneData.platformFeeAmount || 0,
                 totalAmountPaid: payableAmount,
                 remainingAmount: Math.max(0, summary.remainingAmount - payableAmount),
-                transactionId: txnRef,
-                paymentGateway: "DUMMY",
+                transactionId: effectivePaymentId,
+                paymentGateway: effectiveGateway,
             });
 
             return {
@@ -622,8 +830,11 @@ class EscrowService {
                 amountPaid: payableAmount,
                 status: "PAID",
                 invoice,
+                gateway: effectiveGateway,
+                paymentId: effectivePaymentId,
             };
         });
+
 
         // Real-time broadcast
         emitToProject(projectId, "milestone:paid", {
@@ -741,16 +952,55 @@ class EscrowService {
                 },
             });
 
-            // 4. Update Milestone Status to PAID
+            // 4. Update Milestone Status to PAID with immutable approval audit snapshot
+            const approvalSnapshot = {
+                approvedAt: new Date(),
+                approvedBy: user.id,
+                approvedAmount: milestoneAmount,
+                milestoneTitle: milestone.title,
+                sequence: milestone.sequence,
+            };
+
             const updatedMilestone = await tx.milestone.update({
                 where: { id: milestone.id },
                 data: {
                     status: "PAID",
                     approvedAt: new Date(),
+                    approvedById: user.id,
+                    approvalSnapshot,
                     paidAt: new Date(),
                     version: { increment: 1 },
                 },
             });
+
+            // 4b. Record in immutable Financial Ledger
+            await FinancialLedgerService.recordTransaction({
+                projectId: project.id,
+                milestoneId: milestone.id,
+                userId: proUserId,
+                type: "MILESTONE_PAYMENT",
+                amount: milestoneAmount,
+                gateway: "INTERNAL_ESCROW",
+                gatewayTransactionId: `escrow_${escrow.id}_m_${milestone.sequence}`,
+                status: "COMPLETED",
+                metadata: {
+                    approvedBy: user.id,
+                    milestoneTitle: milestone.title,
+                },
+            }, tx);
+
+            // 4c. Enqueue Designer Payout into Admin Manual Payout Queue
+            const designerCommission = Math.round(milestoneAmount * 0.05); // 5% commission
+            const eligiblePayout = milestoneAmount - designerCommission;
+            await FinancialLedgerService.enqueueDesignerPayout({
+                projectId: project.id,
+                milestoneId: milestone.id,
+                designerId: proUserId,
+                grossAmount: milestoneAmount,
+                designerCommission,
+                nonRefundableFee: 0,
+                eligiblePayoutAmount: eligiblePayout,
+            }, tx);
 
             // 5. Evaluate Project Phase Progression & Completion
             await ProjectStateMachine.evaluateProjectPhaseProgression(project.id, tx);
@@ -773,7 +1023,11 @@ class EscrowService {
             if (allMilestonesCompleted && allContracts.length > 0 && openDisputes === 0) {
                 await tx.project.update({
                     where: { id: project.id },
-                    data: { status: "COMPLETED", availabilityStatus: "CLOSED" },
+                    data: {
+                        status: "COMPLETED",
+                        availabilityStatus: "CLOSED",
+                        downloadEnabled: true,
+                    },
                 });
                 await tx.projectEscrow.update({
                     where: { id: escrow.id },
@@ -855,8 +1109,14 @@ class EscrowService {
             throw new Error("Unauthorized: Only the project client can reject milestones");
         }
 
-        if (milestone.status === "PAID") {
-            throw new Error("Cannot request revision on an already approved and paid milestone");
+        if (milestone.status === "PAID" || milestone.status === "APPROVED") {
+            throw new Error("Approved milestones cannot be disapproved or returned for revision.");
+        }
+
+        const currentRevisions = milestone.revisionCount || 0;
+        const allowedRevisions = milestone.allowedRevisionCount || 1;
+        if (currentRevisions >= allowedRevisions) {
+            throw new Error(`Revision limit reached (${currentRevisions} of ${allowedRevisions} revisions used). Extra revision rounds require project scope extension or mutual agreement.`);
         }
 
         const updated = await prisma.milestone.update({
@@ -864,6 +1124,10 @@ class EscrowService {
             data: {
                 status: "REVISION_REQUIRED",
                 notes: `Revision requested: ${reason}`,
+                revisionCount: { increment: 1 },
+                revisionRequestedAt: new Date(),
+                revisionRequestedById: user.id,
+                revisionReason: String(reason).trim(),
                 version: { increment: 1 },
             },
         });
@@ -1080,8 +1344,14 @@ class EscrowService {
         }
 
         const resolved = await prisma.$transaction(async (tx) => {
-            const relPro = Number(releaseAmountPro) || 0;
-            const refCli = Number(refundAmountClient) || 0;
+            // Calculate settlement with 4% non-refundable platform component
+            const baseDisputedPool = escrow.escrowBalance > 0 ? escrow.escrowBalance : dispute.disputedAmount;
+            const nonRefundableFee = Math.round(baseDisputedPool * 0.04);
+            const approvedDesignerAmt = Number(adminApprovedDesignerAmount ?? releaseAmountPro) || 0;
+            const clientRefundAmt = Math.max(0, baseDisputedPool - (approvedDesignerAmt + nonRefundableFee));
+
+            const relPro = approvedDesignerAmt;
+            const refCli = clientRefundAmt;
 
             // 1. If releasing funds to Pro
             if (relPro > 0 && proUserId) {
@@ -1095,6 +1365,29 @@ class EscrowService {
                         updatedBy: adminUser.id,
                     },
                 });
+
+                // Enqueue to Admin Manual Payout Queue for administrative record & bank transfer
+                await FinancialLedgerService.enqueueDesignerPayout({
+                    projectId: project.id,
+                    milestoneId,
+                    designerId: proUserId,
+                    grossAmount: relPro,
+                    designerCommission: 0,
+                    nonRefundableFee,
+                    eligiblePayoutAmount: relPro,
+                }, tx);
+
+                // Record in immutable financial ledger
+                await FinancialLedgerService.recordTransaction({
+                    projectId: project.id,
+                    milestoneId,
+                    userId: proUserId,
+                    type: "DESIGNER_SETTLEMENT",
+                    amount: relPro,
+                    gateway: "ADMIN_ARBITRATION",
+                    status: "COMPLETED",
+                    metadata: { disputeId, adminNotes },
+                }, tx);
 
                 await tx.projectEscrow.update({
                     where: { id: escrow.id },
@@ -1111,7 +1404,7 @@ class EscrowService {
                         amount: relPro,
                         milestoneId,
                         userId: proUserId,
-                        description: `Admin resolved dispute #${disputeId.slice(0, 8)}: Released ₹${relPro} to specialist. Notes: ${adminNotes}`,
+                        description: `Admin resolved dispute #${disputeId.slice(0, 8)}: Approved ₹${relPro} to specialist. Notes: ${adminNotes}`,
                         status: "COMPLETED",
                     },
                 });
@@ -1119,6 +1412,18 @@ class EscrowService {
 
             // 2. If refunding funds to Client
             if (refCli > 0) {
+                // Record in immutable financial ledger
+                await FinancialLedgerService.recordTransaction({
+                    projectId: project.id,
+                    milestoneId,
+                    userId: project.clientId,
+                    type: "CLIENT_REFUND",
+                    amount: refCli,
+                    gateway: "ADMIN_ARBITRATION",
+                    status: "COMPLETED",
+                    metadata: { disputeId, adminNotes, nonRefundableFee },
+                }, tx);
+
                 await tx.projectEscrow.update({
                     where: { id: escrow.id },
                     data: {
@@ -1134,7 +1439,7 @@ class EscrowService {
                         amount: refCli,
                         milestoneId,
                         userId: project.clientId,
-                        description: `Admin resolved dispute #${disputeId.slice(0, 8)}: Refunded ₹${refCli} to client. Notes: ${adminNotes}`,
+                        description: `Admin resolved dispute #${disputeId.slice(0, 8)}: Refunded ₹${refCli} to client (after ₹${nonRefundableFee} non-refundable component). Notes: ${adminNotes}`,
                         status: "COMPLETED",
                     },
                 });
@@ -1161,7 +1466,7 @@ class EscrowService {
                 });
             }
 
-            // 5. Update Dispute Record
+            // 5. Update Dispute Record with exact settlement figures
             const statusMap = {
                 RELEASE_TO_PRO: "RESOLVED_RELEASED",
                 REFUND_TO_CLIENT: "RESOLVED_REFUNDED",
@@ -1172,13 +1477,17 @@ class EscrowService {
             const updatedDispute = await tx.projectDispute.update({
                 where: { id: disputeId },
                 data: {
-                    status: statusMap[decision] || "RESOLVED_RELEASED",
+                    status: statusMap[decision] || "RESOLVED_SPLIT",
                     adminDecision: decision,
                     adminNotes,
                     resolvedById: adminUser.id,
+                    resolvedAt: new Date(),
+                    settledAt: new Date(),
                     releaseAmountPro: relPro,
                     refundAmountClient: refCli,
-                    resolvedAt: new Date(),
+                    adminApprovedDesignerAmount: relPro,
+                    calculatedClientRefund: refCli,
+                    settlementNotes: adminNotes,
                 },
             });
 

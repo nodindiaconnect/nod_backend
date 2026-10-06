@@ -1,13 +1,8 @@
 import axios from "axios";
 import NodeCache from "node-cache";
 import nodeMailer from "nodemailer";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
 import prisma from "../config/prismaClient.js";
 
-let envfile = process.env;
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 const myCache = new NodeCache();
 
 // const s3 = new S3Client({

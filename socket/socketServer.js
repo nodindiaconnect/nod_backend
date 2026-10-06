@@ -1,23 +1,41 @@
+import http from "http";
 import { Server } from "socket.io";
 import { socketAuth } from "../middleware/authenticate.js";
 import ChatService from "../services/chatService.js";
 import prisma from "../config/prismaClient.js";
 import logger from "../helper/logger.js";
+import { socketCorsOptions } from "../config/corsConfig.js";
 
 const onlineUsers = new Map(); // userId -> Set(socketId)
 let ioInstance = null;
 
-export function initSocketServer(httpServer) {
-    const io = new Server(httpServer, {
-        cors: {
-            origin: "*",
-            methods: ["GET", "POST", "PATCH", "DELETE"],
-            credentials: true,
-        },
+export function getIO() {
+    return ioInstance;
+}
+
+export function initSocketServer(httpServer = null, customOptions = {}) {
+    if (ioInstance) {
+        if (httpServer) {
+            try {
+                ioInstance.attach(httpServer);
+            } catch (e) {
+                logger.warn(`[Socket] Attach warning: ${e.message}`);
+            }
+        }
+        return ioInstance;
+    }
+
+    const options = {
+        cors: socketCorsOptions,
         pingTimeout: 60000,
         pingInterval: 25000,
-    });
+        transports: ["websocket", "polling"],
+        allowEIO3: true,
+        ...customOptions,
+    };
 
+    const serverToUse = httpServer || http.createServer();
+    const io = new Server(serverToUse, options);
     ioInstance = io;
 
     // Use existing socketAuth middleware

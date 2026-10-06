@@ -51,6 +51,11 @@ model Project {
   additionalNotes        String?
 
   status             ProjectStatus             @default(WAITING_FOR_QUOTATIONS)
+  projectDeliveryType ProjectDeliveryType      @default(TWO_D_PLUS_THREE_D)
+  approvedProjectAmount Float?
+  amountApprovedAt   DateTime?
+  amountApprovedById String?
+  downloadEnabled    Boolean                   @default(false)
   currentPhase       ProjectPhase?
   availabilityStatus ProjectAvailabilityStatus @default(OPEN)
   biddingDeadline    DateTime?
@@ -63,6 +68,11 @@ model Project {
   chats       Chat[]
   reviews     Review[]
   escrow      ProjectEscrow?
+  submissions ProjectSubmission[]
+  accesses    ProjectAccess[]
+  payouts     DesignerPayoutQueue[]
+  financialTransactions FinancialTransaction[]
+  payments              Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -139,17 +149,26 @@ model Milestone {
   description   String?
   amount        Float
   status        MilestoneStatus @default(PENDING)
-  submittedAt   DateTime?
-  approvedAt    DateTime?
-  paidAt        DateTime?
-  proofUrls     String[]        @default([])
-  notes         String?
-  version       Int             @default(1)
+  submittedAt            DateTime?
+  approvedAt             DateTime?
+  approvedById           String?
+  approvalSnapshot       Json?
+  paidAt                 DateTime?
+  proofUrls              String[]          @default([])
+  notes                  String?
+  revisionCount          Int               @default(0)
+  allowedRevisionCount   Int               @default(1)
+  revisionRequestedAt    DateTime?
+  revisionRequestedById  String?
+  revisionReason         String?
+  designerRespondedAt    DateTime?
+  version                Int               @default(1)
 
-  payments      Payment[]
+  payments               Payment[]
+  submissions            ProjectSubmission[]
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   @@index([contractId])
   @@index([status])

@@ -1,4 +1,5 @@
 import prisma from "../config/prismaClient.js";
+import { containsContactInfo } from "../utils/validators.js";
 
 class ReviewService {
   /**
@@ -36,6 +37,18 @@ class ReviewService {
 
     if (!comment || comment.trim().length < 5) {
       throw new Error("Review comment must be at least 5 characters");
+    }
+
+    if (title && typeof title === "string") {
+      const titleCheck = containsContactInfo(title);
+      if (titleCheck.hasContact) {
+        throw new Error(titleCheck.reason || "Sharing contact details in review title is not permitted.");
+      }
+    }
+
+    const commentCheck = containsContactInfo(comment);
+    if (commentCheck.hasContact) {
+      throw new Error(commentCheck.reason || "Sharing phone numbers or email addresses in reviews is not permitted.");
     }
 
     // Check project exists and verify eligibility

@@ -14,12 +14,20 @@ router.get(
     PaymentController.getProjectPaymentSummary
 );
 
+// Unified Milestone Razorpay Order Creation (50% Advance, 25% Second, 25% Final)
+router.post(
+    "/projects/:projectId/milestones/:milestoneSequence/create-order",
+    Auth,
+    PaymentController.createMilestonePaymentOrder
+);
+
 // Unified Milestone Payment (50% Advance, 25% Second, 25% Final)
 router.post(
     "/projects/:projectId/pay-milestone",
     Auth,
     PaymentController.payProjectMilestone
 );
+
 
 // Project Invoices
 router.get(
@@ -115,6 +123,27 @@ router.get(
     "/projects/:projectId/milestones",
     Auth,
     PaymentController.getProjectMilestones
+);
+
+// Designer uploads milestone deliverables
+router.post(
+    "/projects/:projectId/milestones/:milestoneId/submissions",
+    Auth,
+    PaymentController.createSubmission
+);
+
+// Authenticated File Access (View-Only vs Download)
+router.get(
+    "/files/:fileId/access",
+    Auth,
+    PaymentController.getFileAccess
+);
+
+// Dispute settlement calculation preview
+router.post(
+    "/disputes/settlement-preview",
+    Auth,
+    PaymentController.getDisputeSettlementPreview
 );
 
 // Get user's payment history

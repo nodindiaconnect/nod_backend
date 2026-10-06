@@ -5,6 +5,8 @@ import SystemConfigService from "../services/systemConfigService.js";
 import PaymentCalculationService from "../services/paymentCalculationService.js";
 import InvoiceService from "../services/invoiceService.js";
 import InvoicePdfService from "../services/invoicePdfService.js";
+import FileAccessService from "../services/fileAccessService.js";
+import TaxService from "../services/taxService.js";
 import logger from "../helper/logger.js";
 
 class PaymentController {
@@ -36,9 +38,30 @@ class PaymentController {
     }
 
     /**
+     * Create Razorpay Standard Payment Order for Milestone
+     * POST /api/payments/projects/:projectId/milestones/:milestoneSequence/create-order
+     */
+    static async createMilestonePaymentOrder(req, res, next) {
+        try {
+            const { projectId, milestoneSequence } = req.params;
+            const idempotencyKey = req.headers["idempotency-key"] || req.body.idempotencyKey;
+            const order = await EscrowService.createMilestonePaymentOrder(
+                req.user,
+                projectId,
+                milestoneSequence,
+                idempotencyKey
+            );
+            return helper.success(res, "Razorpay payment order created successfully", order);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, error.statusCode || 400);
+        }
+    }
+
+    /**
      * Unified Milestone Payment Execution (1: 50% Advance, 2: 25% Second, 3: 25% Final)
      * POST /api/payments/projects/:projectId/pay-milestone
      */
+
     static async payProjectMilestone(req, res, next) {
         try {
             const { projectId } = req.params;
@@ -308,6 +331,47 @@ class PaymentController {
                 status: "error",
                 message: error.message,
             });
+        }
+    }
+
+    /**
+     * Designer Uploads Submission Deliverables for Milestone
+     * POST /api/payments/projects/:projectId/milestones/:milestoneId/submissions
+     */
+    static async createSubmission(req, res, next) {
+        try {
+            const { projectId, milestoneId } = req.params;
+            const submission = await FileAccessService.createSubmission(req.user, projectId, milestoneId, req.body);
+            return helper.success(res, "Milestone deliverables submitted successfully", submission);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
+        }
+    }
+
+    /**
+     * Authorize and Fetch File Access (View-Only vs Full Download)
+     * GET /api/payments/files/:fileId/access
+     */
+    static async getFileAccess(req, res, next) {
+        try {
+            const { fileId } = req.params;
+            const fileAccess = await FileAccessService.getFileAccess(req.user || req.admin, fileId);
+            return helper.success(res, "File access details verified successfully", fileAccess);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 403);
+        }
+    }
+
+    /**
+     * Dispute Settlement Calculation Preview
+     * POST /api/payments/disputes/settlement-preview
+     */
+    static async getDisputeSettlementPreview(req, res, next) {
+        try {
+            const preview = TaxService.calculateDisputeSettlement(req.body);
+            return helper.success(res, "Dispute settlement preview calculated", preview);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
         }
     }
 }

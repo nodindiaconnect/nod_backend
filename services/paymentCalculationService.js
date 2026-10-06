@@ -1,5 +1,6 @@
 import prisma from "../config/prismaClient.js";
 import SystemConfigService from "./systemConfigService.js";
+import TaxService from "./taxService.js";
 
 class PaymentCalculationService {
     /**
@@ -56,25 +57,38 @@ class PaymentCalculationService {
             });
         }
 
-        // If no contracts awarded yet, fallback to budget average or 0
-        if (totalProjectValue === 0 && project.budgetMin && project.budgetMax) {
+        // If approvedProjectAmount is locked on the project, use it as single source of financial truth
+        if (project.approvedProjectAmount && Number(project.approvedProjectAmount) > 0) {
+            totalProjectValue = Number(project.approvedProjectAmount);
+        } else if (totalProjectValue === 0 && project.budgetMin && project.budgetMax) {
+            // If no contracts awarded yet, fallback to budget average or 0
             totalProjectValue = Math.round((Number(project.budgetMin) + Number(project.budgetMax)) / 2);
         }
 
         // 2. Fetch Dynamic Platform Fee %
         const platformFeeRate = await SystemConfigService.getPlatformFeePercentage();
 
-        // 3. Exact Milestone Value Calculations
-        const advanceAmount = Math.round(totalProjectValue * 0.50); // 50%
-        const secondMilestoneAmount = Math.round(totalProjectValue * 0.25); // 25%
-        const finalMilestoneAmount = totalProjectValue - (advanceAmount + secondMilestoneAmount); // Remaining 25%
-        const platformFeeAmount = Math.round(totalProjectValue * (platformFeeRate / 100));
-        const totalClientPayable = totalProjectValue + platformFeeAmount;
-        const advancePayableWithFee = advanceAmount + platformFeeAmount;
+        // 3. Centralized Tax & Payment Breakdown via TaxService
+        const taxBreakdown = TaxService.calculateBreakdown({
+            baseProjectAmount: totalProjectValue,
+            platformFeeRate,
+        });
+
+        const advanceAmount = taxBreakdown.advanceAmount;
+        const secondMilestoneAmount = taxBreakdown.secondMilestoneAmount;
+        const finalMilestoneAmount = taxBreakdown.finalMilestoneAmount;
+        const platformFeeAmount = taxBreakdown.platformFeeAmount;
+        const totalClientPayable = taxBreakdown.totalClientPayable;
+        const advancePayableWithFee = taxBreakdown.advancePayableWithFee;
 
         // 4. Escrow and Milestone Payment State
         const escrow = project.escrow;
-        const isAdvancePaid = Boolean(escrow && escrow.initialDepositPaid >= advanceAmount && escrow.platformFeePaid);
+        // 100% upfront payment check
+        const isEscrowFullyFunded = Boolean(
+            escrow &&
+            (escrow.initialDepositPaid >= totalProjectValue || escrow.status === "FUNDED" || escrow.status === "COMPLETED") &&
+            escrow.platformFeePaid
+        );
 
         // Analyze Milestone statuses across contracts
         const allMilestones = awardedContracts.flatMap((c) => c.milestones);
@@ -83,132 +97,40 @@ class PaymentCalculationService {
         const m3Milestones = allMilestones.filter((m) => m.sequence === 3);
 
         const isM1Approved = m1Milestones.length > 0 && m1Milestones.every((m) => ["APPROVED", "PAID"].includes(m.status));
-        const isM2Paid = m2Milestones.length > 0 && m2Milestones.every((m) => ["PAID", "APPROVED"].includes(m.status));
         const isM2Approved = m2Milestones.length > 0 && m2Milestones.every((m) => ["APPROVED", "PAID"].includes(m.status));
-        const isM3Paid = m3Milestones.length > 0 && m3Milestones.every((m) => ["PAID", "APPROVED"].includes(m.status));
+        const isM3Approved = m3Milestones.length > 0 && m3Milestones.every((m) => ["APPROVED", "PAID"].includes(m.status));
+
+        const isAdvancePaid = isEscrowFullyFunded;
+        const isM2Paid = isM2Approved;
+        const isM3Paid = isM3Approved;
 
         // Total paid so far
         let totalPaid = 0;
-        if (isAdvancePaid) {
-            totalPaid += advanceAmount + platformFeeAmount;
-        }
-        if (isM2Paid) {
-            totalPaid += secondMilestoneAmount;
-        }
-        if (isM3Paid) {
-            totalPaid += finalMilestoneAmount;
+        if (isEscrowFullyFunded) {
+            totalPaid = totalClientPayable;
         }
 
         const remainingAmount = Math.max(0, totalClientPayable - totalPaid);
 
-        // Determine current actionable milestone
-        let currentMilestone = 1;
-        let currentDueAmount = 0;
-        let canPaySecond = false;
-        let secondLockReasons = [];
-        let canPayFinal = false;
-        let finalLockReasons = [];
-
-        if (!isAdvancePaid) {
-            currentMilestone = 1;
-            currentDueAmount = advancePayableWithFee;
-        } else if (!isM2Paid) {
-            currentMilestone = 2;
-            currentDueAmount = secondMilestoneAmount;
-
-            // 1. Validate First 50% payment completed
-            if (!isAdvancePaid) {
-                secondLockReasons.push("First 50% advance payment must be completed");
-            }
-            // 2. Validate required documents submitted
-            const m1DocsSubmitted = m1Milestones.length === 0 || m1Milestones.every((m) => (m.proofUrls && m.proofUrls.length > 0) || ["SUBMITTED_FOR_REVIEW", "APPROVED", "PAID"].includes(m.status));
-            if (!m1DocsSubmitted) {
-                secondLockReasons.push("Required drawings, specifications, and Phase 1 documents must be submitted");
-            }
-            // 3. Validate required documents and site visits verified / approved
-            const m1DocsVerified = m1Milestones.length === 0 || m1Milestones.every((m) => ["APPROVED", "PAID"].includes(m.status));
-            if (!m1DocsVerified) {
-                secondLockReasons.push("Phase 1 deliverables and site visit sign-offs must be verified and approved");
-            }
-
-            canPaySecond = secondLockReasons.length === 0;
-        } else if (!isM3Paid) {
-            currentMilestone = 3;
-            currentDueAmount = finalMilestoneAmount;
-
-            // 1. Validate First & Second payment completed
-            if (!isAdvancePaid) {
-                finalLockReasons.push("First 50% advance payment must be completed");
-            }
-            if (!isM2Paid) {
-                finalLockReasons.push("Second 25% milestone payment must be completed");
-            }
-            // 2. Validate intermediate and execution documents submitted & verified
-            const m2DocsSubmitted = m2Milestones.length === 0 || m2Milestones.every((m) => (m.proofUrls && m.proofUrls.length > 0) || ["SUBMITTED_FOR_REVIEW", "APPROVED", "PAID"].includes(m.status));
-            if (!m2DocsSubmitted) {
-                finalLockReasons.push("Core execution documents, site progress reports, and phase 2 deliverables must be submitted");
-            }
-            const m2DocsVerified = m2Milestones.length === 0 || m2Milestones.every((m) => ["APPROVED", "PAID"].includes(m.status));
-            if (!m2DocsVerified) {
-                finalLockReasons.push("Phase 2 deliverables and intermediate approvals must be verified");
-            }
-            // 3. Validate final handover, inspection checklist, and completion verified
-            const m3DocsSubmitted = m3Milestones.length === 0 || m3Milestones.every((m) => (m.proofUrls && m.proofUrls.length > 0) || ["SUBMITTED_FOR_REVIEW", "APPROVED", "PAID"].includes(m.status));
-            if (!m3DocsSubmitted) {
-                finalLockReasons.push("Final handover inspection, snag resolution checklist, and completion reports must be submitted");
-            }
-
-            canPayFinal = finalLockReasons.length === 0;
-        } else {
-            currentMilestone = 4; // All completed
-            currentDueAmount = 0;
-        }
+        // Client pays 100% upfront into escrow
+        let currentMilestone = isEscrowFullyFunded ? 2 : 1;
+        let currentDueAmount = isEscrowFullyFunded ? 0 : totalClientPayable;
 
         const milestonesRoadmap = [
             {
                 sequence: 1,
-                title: "50% Initial Advance Deposit",
-                subtitle: "Mobilization, Site Planning & Blueprint Initiation",
-                percentage: 50,
-                baseAmount: advanceAmount,
+                title: "100% Full Project Escrow Deposit",
+                subtitle: "100% Upfront Secure Escrow Deposit Before Specialist Activation",
+                percentage: 100,
+                baseAmount: totalProjectValue,
                 platformFeeRate,
                 platformFeeAmount,
-                totalPayable: advancePayableWithFee,
-                isPaid: isAdvancePaid,
+                totalPayable: totalClientPayable,
+                isPaid: isEscrowFullyFunded,
                 isLocked: false,
                 lockReasons: [],
-                status: isAdvancePaid ? "PAID" : "DUE",
-                paidAt: escrow?.createdAt || null,
-            },
-            {
-                sequence: 2,
-                title: "25% Second Milestone",
-                subtitle: "Core Execution, Intermediate Verification & Approvals",
-                percentage: 25,
-                baseAmount: secondMilestoneAmount,
-                platformFeeRate: 0,
-                platformFeeAmount: 0,
-                totalPayable: secondMilestoneAmount,
-                isPaid: isM2Paid,
-                isLocked: !canPaySecond && !isM2Paid,
-                lockReasons: secondLockReasons,
-                status: isM2Paid ? "PAID" : canPaySecond ? "READY_TO_PAY" : "LOCKED",
-                paidAt: null,
-            },
-            {
-                sequence: 3,
-                title: "25% Final Completion Payment",
-                subtitle: "Final Quality Detailing, Handover & Snag List Resolution",
-                percentage: 25,
-                baseAmount: finalMilestoneAmount,
-                platformFeeRate: 0,
-                platformFeeAmount: 0,
-                totalPayable: finalMilestoneAmount,
-                isPaid: isM3Paid,
-                isLocked: !canPayFinal && !isM3Paid,
-                lockReasons: finalLockReasons,
-                status: isM3Paid ? "PAID" : canPayFinal ? "READY_TO_PAY" : "LOCKED",
-                paidAt: null,
+                status: isEscrowFullyFunded ? "PAID" : "DUE",
+                paidAt: isEscrowFullyFunded ? (escrow?.createdAt || new Date()) : null,
             },
         ];
 
@@ -217,9 +139,21 @@ class PaymentCalculationService {
             projectTitle: project.title,
             projectCategory: project.category,
             projectStatus: project.status,
+            projectDeliveryType: project.projectDeliveryType || "TWO_D_PLUS_THREE_D",
+            approvedProjectAmount: totalProjectValue,
+            downloadEnabled: Boolean(project.downloadEnabled || project.status === "COMPLETED"),
             totalProjectValue,
             platformFeeRate,
             platformFeeAmount,
+            designerCommissionRate: taxBreakdown.designerCommissionRate,
+            designerCommissionAmount: taxBreakdown.designerCommissionAmount,
+            nonRefundableRate: taxBreakdown.nonRefundableRate,
+            nonRefundableAmount: taxBreakdown.nonRefundableAmount,
+            gstRate: taxBreakdown.gstRate,
+            totalGst: taxBreakdown.totalGst,
+            designerEligiblePayout: taxBreakdown.designerEligiblePayout,
+            platformRevenue: taxBreakdown.platformRevenue,
+            netPlatformEarnings: taxBreakdown.netPlatformEarnings,
             totalClientPayable,
             advanceAmount,
             advancePayableWithFee,

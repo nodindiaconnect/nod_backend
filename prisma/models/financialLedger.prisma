@@ -1,0 +1,112 @@
+model FinancialTransaction {
+  id                   String                   @id @default(uuid())
+  internalTxnId        String                   @unique
+  projectId            String
+  project              Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId          String?
+  invoiceId            String?
+  userId               String
+  type                 FinancialTransactionType
+  amount               Float
+  currency             String                   @default("INR")
+  gateway              String?                  @default("RAZORPAY")
+  gatewayTransactionId String?
+  status               String                   @default("COMPLETED")
+  metadata             Json?
+  createdAt            DateTime                 @default(now())
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([type])
+  @@index([internalTxnId])
+  @@index([createdAt])
+}
+
+model DesignerPayoutQueue {
+  id                     String            @id @default(uuid())
+  projectId              String
+  project                Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId            String?
+  designerId             String
+  clientPaymentId        String?
+  grossAmount            Float
+  designerCommission     Float
+  nonRefundableFee       Float             @default(0)
+  eligiblePayoutAmount   Float
+  status                 PayoutQueueStatus @default(PENDING)
+  paymentMethod          String?           @default("BANK_TRANSFER")
+  bankReferenceNumber    String?
+  paymentDate            DateTime?
+  processedById          String?
+  notes                  String?
+  proofImageUrl          String?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  @@index([projectId])
+  @@index([designerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ProjectSubmission {
+  id          String           @id @default(uuid())
+  projectId   String
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId String
+  milestone   Milestone        @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  designerId  String
+  version     Int              @default(1)
+  title       String
+  notes       String?
+  status      String           @default("SUBMITTED") // SUBMITTED, REVISION_REQUESTED, APPROVED
+  submittedAt DateTime         @default(now())
+  reviewedAt  DateTime?
+  files       SubmissionFile[]
+
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([designerId])
+}
+
+model SubmissionFile {
+  id              String            @id @default(uuid())
+  submissionId    String
+  submission      ProjectSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fileUrl         String
+  fileName        String
+  fileType        String
+  fileSize        Int?
+  canView         Boolean           @default(true)
+  canDownload     Boolean           @default(false)
+  canAccessSource Boolean           @default(false)
+  canPrint        Boolean           @default(false)
+  canShare        Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+
+  @@index([submissionId])
+}
+
+model ProjectAccess {
+  id          String    @id @default(uuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId      String
+  userEmail   String?
+  canView     Boolean   @default(true)
+  canDownload Boolean   @default(false)
+  canEdit     Boolean   @default(false)
+  canPrint    Boolean   @default(false)
+  canShare    Boolean   @default(false)
+  status      String    @default("ACTIVE") // ACTIVE, SUSPENDED, REVOKED
+  grantedAt   DateTime  @default(now())
+  revokedAt   DateTime?
+  expiresAt   DateTime?
+  createdById String?
+
+  @@index([projectId])
+  @@index([userId])
+}

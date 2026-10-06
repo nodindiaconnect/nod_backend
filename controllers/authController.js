@@ -15,6 +15,7 @@ import {
   isValidUsername,
   isValidPassword,
   isValidText,
+  containsContactInfo,
 } from "../utils/validators.js";
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
@@ -361,6 +362,15 @@ async function validateRoleFields(roleCode, roleFields) {
       if (typeof raw !== "string")
         return { ok: false, message: `${field.id} must be text.` };
       const trimmed = sanitizeData(raw.trim());
+      const contactCheck = containsContactInfo(trimmed);
+      if (contactCheck.hasContact) {
+        return {
+          ok: false,
+          message:
+            contactCheck.reason ||
+            `Sharing contact details (phone numbers or email addresses) in ${field.id} is not permitted.`,
+        };
+      }
       if (field.id === "bio" && /\d/.test(trimmed)) {
         return { ok: false, message: "Bio cannot contain numbers." };
       }
@@ -588,11 +598,11 @@ class authController {
         return helper.failed(res, "Please enter a valid email address.");
       }
 
-      if (!isValidPhone(phone)) {
-        console.log("Registration failed: Invalid phone");
+      if (!phone || typeof phone !== "string" || !phone.trim()) {
+        console.log("Registration failed: Missing phone");
         return helper.failed(
           res,
-          "Please enter a valid 10-digit mobile number.",
+          "Please enter your phone number.",
         );
       }
 
@@ -717,6 +727,7 @@ class authController {
             phone,
             role: normalizedRole,
             password: hashedPassword,
+            isVerified: false,
           },
         });
 

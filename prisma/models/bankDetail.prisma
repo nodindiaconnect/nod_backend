@@ -6,6 +6,7 @@ model BankDetail {
   bankName          String
   accountNumber     String
   ifscCode          String
+  upiId             String?
   accountType       String   @default("SAVINGS") // SAVINGS or CURRENT
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

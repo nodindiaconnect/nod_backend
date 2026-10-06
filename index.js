@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import app from "./app.js";
+import { initSocketServer, getIO } from "./socket/socketServer.js";
 
 // Configure default options for 2nd Gen Firebase Cloud Functions
 setGlobalOptions({
@@ -9,6 +10,11 @@ setGlobalOptions({
   timeoutSeconds: 120,
   memory: "512MiB",
 });
+
+// Initialize Socket.IO instance for serverless runtime handlers if not already initialized
+if (!getIO()) {
+  initSocketServer();
+}
 
 /**
  * Main Firebase Cloud Function exposing the Express REST backend.

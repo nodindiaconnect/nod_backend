@@ -7,15 +7,53 @@ if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder("ipv4first");
 }
 
+function htmlToPlainText(html = "") {
+  return String(html)
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, "$1\n\n")
+    .replace(/<p[^>]*>(.*?)<\/p>/gi, "$1\n\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>(.*?)<\/li>/gi, "• $1\n")
+    .replace(/<div[^>]*>(.*?)<\/div>/gi, "$1\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 async function getTransporterConfig() {
+  const customHost = process.env.SMTP_HOST;
+  const user = process.env.EMAIL_USER || process.env.SMTP_USER || "nodindiaconnect@gmail.com";
+  const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS || "wolf hxlt crif osta";
+
+  if (customHost) {
+    const port = Number(process.env.SMTP_PORT) || 587;
+    return {
+      host: customHost,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+      tls: { rejectUnauthorized: true },
+    };
+  }
+
   let host = "smtp.gmail.com";
   try {
     const ipv4Addresses = await dnsPromises.resolve4("smtp.gmail.com");
     if (ipv4Addresses && ipv4Addresses.length > 0) {
-      host = ipv4Addresses[0]; // Direct IPv4 IP skips Nodemailer's random IPv6 resolution
+      host = ipv4Addresses[0];
     }
   } catch (err) {
-    console.warn("[emailService] IPv4 DNS resolution failed, fallback to hostname:", err.message);
+    console.warn(
+      "[emailService] IPv4 DNS resolution failed, fallback to hostname:",
+      err.message,
+    );
   }
 
   return {
@@ -27,17 +65,17 @@ async function getTransporterConfig() {
       servername: "smtp.gmail.com",
     },
     auth: {
-      user: process.env.EMAIL_USER || "nodindiaconnect@gmail.com",
-      pass: process.env.EMAIL_PASS || "wolf hxlt crif osta",
+      user,
+      pass,
     },
   };
 }
 
-const FROM_EMAIL = "NOD <nodindiaconnect@gmail.com>";
+const FROM_EMAIL = process.env.EMAIL_FROM || "NOD India <nodindiaconnect@gmail.com>";
 const BRAND_NAME = "NOD";
-const BRAND_TAGLINE = "Designing Timeless Spaces";
+const BRAND_TAGLINE = "Architecture, Design & Construction Marketplace";
 const SUPPORT_EMAIL = "nodindiaconnect@gmail.com";
-const BRAND_URL = "https://yourdomain.com";
+const BRAND_URL = process.env.CLIENT_URL || "https://nodindia.in";
 
 // ─── Shared CSS ────────────────────────────────────────────────────────────────
 const BASE_STYLES = `
@@ -230,25 +268,38 @@ const emailClose = (year = new Date().getFullYear()) => `
 
 // ─── Email Service ───────────────────────────────────────────────────────────
 class emailService {
-
-  static async sendMail(email, subject, htmlContent) {
+  static async sendMail(email, subject, htmlContent, attachments = [], textContent = null) {
     console.log("──────────────────────────────────────────");
     console.log(`[emailService] Preparing to send email`);
     console.log(`[emailService] To: ${email}`);
     console.log(`[emailService] Subject: ${subject}`);
+    console.log(`[emailService] Attachments: ${attachments.length}`);
 
     try {
       const config = await getTransporterConfig();
-      console.log(`[emailService] SMTP host: ${config.host}:${config.port} (servername: ${config.servername})`);
+      console.log(
+        `[emailService] SMTP host: ${config.host}:${config.port} (servername: ${config.servername || "default"})`,
+      );
       console.log(`[emailService] SMTP user: ${config.auth.user}`);
 
       const transporter = nodeMailer.createTransport(config);
+      const text = textContent || htmlToPlainText(htmlContent);
 
       const info = await transporter.sendMail({
         from: FROM_EMAIL,
         to: email,
+        replyTo: SUPPORT_EMAIL,
         subject,
+        text,
         html: htmlContent,
+        attachments,
+        priority: "high",
+        headers: {
+          "X-Priority": "1 (Highest)",
+          "X-MSMail-Priority": "High",
+          Importance: "High",
+          "X-Mailer": "NOD India Notification Engine",
+        },
       });
 
       console.log("[emailService] Email SENT successfully ✅");
@@ -271,29 +322,33 @@ class emailService {
   }
 
   static async sendOtpMail(email, name, otp, otpType) {
-    console.log(`[emailService] sendOtpMail called — email: ${email}, otpType: ${otpType}, otp: ${otp}`);
+    console.log(
+      `[emailService] sendOtpMail called — email: ${email}, otpType: ${otpType}, otp: ${otp}`,
+    );
 
     let subject, purpose, message;
 
     switch (otpType) {
       case "register":
-        subject = `Verify Your ${BRAND_NAME} Account`;
+        subject = `NOD Verification Code: ${otp}`;
         purpose = "Account Registration";
         message = `Thank you for registering with ${BRAND_NAME}! Please use the OTP below to verify your account.`;
         break;
       case "forgotPassword":
-        subject = `Reset Your ${BRAND_NAME} Password`;
+        subject = `NOD Password Reset Code: ${otp}`;
         purpose = "Password Reset";
-        message = "We received a request to reset your password. Please use the OTP below to proceed.";
+        message =
+          "We received a request to reset your password. Please use the OTP below to proceed.";
         break;
       case "changePassword":
       case "ChangePassword":
-        subject = "Verify Password Change Request";
+        subject = `NOD Security Code: ${otp}`;
         purpose = "Password Change";
-        message = "We received a request to change your password. Please use the OTP below to verify this change.";
+        message =
+          "We received a request to change your password. Please use the OTP below to verify this change.";
         break;
       default:
-        subject = `Your ${BRAND_NAME} OTP`;
+        subject = `NOD Verification Code: ${otp}`;
         purpose = "Verification";
         message = "Please use the OTP below to complete your verification.";
     }
@@ -313,7 +368,7 @@ class emailService {
 
       <div class="warning-box">
         <strong>⚠️ Security Notice:</strong> Never share your OTP with anyone.
-        ${BRAND_NAME} will never ask for your OTP via phone or email.
+        ${BRAND_NAME} will never ask for your OTP via phone or email. If you ever have difficulty locating future notifications, please check your Spam or Junk folder.
       </div>
 
       <p>Need help? Contact us at
@@ -324,17 +379,33 @@ class emailService {
       ${emailClose()}
     `;
 
+    const plainText = `Hello ${name || "User"},
+
+${message}
+
+Your OTP for ${purpose}: ${otp}
+Valid for: 10 minutes
+
+Note: If you didn't request this OTP, please ignore this email. Check your Spam/Junk folder if future emails are missed.
+
+Need help? Contact us at ${SUPPORT_EMAIL}
+Best regards,
+The ${BRAND_NAME} Team (nodindia.in)`;
+
     try {
-      const messageId = await this.sendMail(email, subject, htmlContent);
-      console.log(`[emailService] sendOtpMail completed — messageId: ${messageId}`);
+      const messageId = await this.sendMail(email, subject, htmlContent, [], plainText);
+      console.log(
+        `[emailService] sendOtpMail completed — messageId: ${messageId}`,
+      );
       return messageId;
     } catch (error) {
-      console.error(`[emailService] sendOtpMail FAILED for ${email}:`, error.message);
+      console.error(
+        `[emailService] sendOtpMail FAILED for ${email}:`,
+        error.message,
+      );
       throw error;
     }
   }
-
-
 
   static async sendPopupLeadMail(lead, recipients) {
     const escapeHtml = (str) =>
@@ -371,7 +442,8 @@ class emailService {
       </div>
     </div>
 
-    ${lead.details
+    ${
+      lead.details
         ? `
     <div class="response-box">
       <div class="resp-by">Inquiry Details</div>
@@ -379,7 +451,7 @@ class emailService {
     </div>
     `
         : ""
-      }
+    }
 
     <p style="margin-top:24px;">
       Kindly review this inquiry and contact the customer as soon as possible.
@@ -416,7 +488,9 @@ class emailService {
   }
 
   static async sendContactSectionLeadMail(lead, recipients) {
-    console.log(`[emailService] sendContactSectionLeadMail called — leadId: ${lead.id}`);
+    console.log(
+      `[emailService] sendContactSectionLeadMail called — leadId: ${lead.id}`,
+    );
     console.log(`[emailService] Recipients: ${JSON.stringify(recipients)}`);
 
     const escapeHtml = (str) =>
@@ -454,12 +528,16 @@ class emailService {
      
       </div>
 
-      ${lead.details ? `
+      ${
+        lead.details
+          ? `
       <div class="response-box">
         <div class="resp-by">Message</div>
         <p>${escapeHtml(lead.details)}</p>
       </div>
-      ` : ""}
+      `
+          : ""
+      }
 
       <p style="margin-top:24px;">Please follow up with this lead as soon as possible.</p>
       ${emailClose()}
@@ -468,35 +546,48 @@ class emailService {
     const results = [];
 
     if (!Array.isArray(recipients) || recipients.length === 0) {
-      console.warn("[emailService] sendContactSectionLeadMail called with no recipients — nothing to send");
+      console.warn(
+        "[emailService] sendContactSectionLeadMail called with no recipients — nothing to send",
+      );
       return results;
     }
 
     for (const recipient of recipients) {
       try {
         const messageId = await this.sendMail(recipient, subject, htmlContent);
-        console.log(`[emailService] ✅ Sent to ${recipient} — messageId: ${messageId}`);
+        console.log(
+          `[emailService] ✅ Sent to ${recipient} — messageId: ${messageId}`,
+        );
         results.push({ email: recipient, success: true, messageId });
       } catch (error) {
-        console.error(`[emailService] ❌ FAILED to send to ${recipient}: ${error.message}`);
-        results.push({ email: recipient, success: false, error: error.message });
+        console.error(
+          `[emailService] ❌ FAILED to send to ${recipient}: ${error.message}`,
+        );
+        results.push({
+          email: recipient,
+          success: false,
+          error: error.message,
+        });
       }
     }
 
-    const sentCount = results.filter(r => r.success).length;
+    const sentCount = results.filter((r) => r.success).length;
     const failedCount = results.length - sentCount;
 
-    console.log(`[emailService] sendContactSectionLeadMail summary for lead ${lead.id}: ${sentCount} sent, ${failedCount} failed out of ${results.length} total`);
+    console.log(
+      `[emailService] sendContactSectionLeadMail summary for lead ${lead.id}: ${sentCount} sent, ${failedCount} failed out of ${results.length} total`,
+    );
     if (failedCount > 0) {
       console.warn(
-        `[emailService] Failed recipients: ${results.filter(r => !r.success).map(r => r.email).join(", ")}`
+        `[emailService] Failed recipients: ${results
+          .filter((r) => !r.success)
+          .map((r) => r.email)
+          .join(", ")}`,
       );
     }
 
     return results;
   }
-
-
 
   static async sendAdminUserCreationMail(email, password, permissions, name) {
     const escapeHtml = (str) =>
@@ -509,9 +600,10 @@ class emailService {
 
     const subject = `Your ${BRAND_NAME} Admin Account Has Been Created`;
 
-    const permissionsList = Array.isArray(permissions) && permissions.length > 0
-      ? permissions.map((p) => `<li>${escapeHtml(p)}</li>`).join("")
-      : "<li>No permissions assigned</li>";
+    const permissionsList =
+      Array.isArray(permissions) && permissions.length > 0
+        ? permissions.map((p) => `<li>${escapeHtml(p)}</li>`).join("")
+        : "<li>No permissions assigned</li>";
 
     const htmlContent = `
     ${emailOpen("Admin Account Created")}
@@ -552,6 +644,274 @@ class emailService {
     }
   }
 
+  /**
+   * Send Automated Payment Tax Invoice Email with PDF Attachment
+   */
+  static async sendInvoiceMail({
+    email,
+    name,
+    invoice,
+    project,
+    pdfBuffer = null,
+  }) {
+    const escapeHtml = (str) =>
+      String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
+    const subject = `Tax Invoice: ${invoice.invoiceNumber} — ${project?.title || "Nod Project"} [PAID]`;
+
+    const htmlContent = `
+    ${emailOpen("Tax Invoice & Payment Receipt")}
+    <h2>Hello ${escapeHtml(name || "Client")},</h2>
+    <p>
+      Thank you for your payment! Your milestone payment has been processed successfully and held in secure project escrow.
+      Please find your official tax invoice details below and attached as a PDF document.
+    </p>
+
+    <div class="info-box">
+      <div class="detail-row">
+        <div class="detail-label">Invoice Number</div>
+        <div class="detail-value"><strong>${escapeHtml(invoice.invoiceNumber)}</strong></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Project</div>
+        <div class="detail-value">${escapeHtml(project?.title || "NOD Project")}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Milestone</div>
+        <div class="detail-value">Phase ${invoice.milestoneSequence} (${escapeHtml(invoice.milestoneTitle)})</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Milestone Share</div>
+        <div class="detail-value">${invoice.milestonePercentage}% (₹ ${Number(invoice.milestoneAmount).toLocaleString("en-IN")})</div>
+      </div>
+      ${
+        invoice.platformFeeAmount > 0
+          ? `
+      <div class="detail-row">
+        <div class="detail-label">Platform Fee (${invoice.platformFeeRate}%)</div>
+        <div class="detail-value">₹ ${Number(invoice.platformFeeAmount).toLocaleString("en-IN")}</div>
+      </div>
+      `
+          : ""
+      }
+      <div class="detail-row">
+        <div class="detail-label">Total Paid</div>
+        <div class="detail-value"><strong style="color:#00466a;font-size:1.1em;">₹ ${Number(invoice.totalAmountPaid).toLocaleString("en-IN")}</strong></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Transaction ID</div>
+        <div class="detail-value">${escapeHtml(invoice.transactionId)}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Gateway</div>
+        <div class="detail-value">${escapeHtml(invoice.paymentGateway || "Razorpay Escrow")}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Status</div>
+        <div class="detail-value"><span class="badge badge-approved">CONFIRMED & IN ESCROW</span></div>
+      </div>
+    </div>
+
+    <div class="success-box">
+      <span class="icon">🛡️</span>
+      <p>
+        <strong>100% Escrow Protection:</strong> Funds remain securely locked in project escrow until you review and approve the submitted deliverables.
+      </p>
+    </div>
+
+    <p style="font-size:0.88em;color:#666;">
+      <strong>Supplier / Seller:</strong> Night Owl Designers (NOD)<br/>
+      UDYAM NO: UDYAM-MP-08-0041277 | GSTIN: 23PQPPS9344H1ZV<br/>
+      Address: NOD office, 1st floor beside uday amrik homes main gate itarsi road sadar betul 460001 MP
+    </p>
+
+    <p style="margin-top:24px;">Best regards,<br/><strong>Night Owl Designers (NOD) Finance Team</strong></p>
+    ${emailClose()}
+    `;
+
+    const attachments = [];
+    if (pdfBuffer && Buffer.isBuffer(pdfBuffer)) {
+      attachments.push({
+        filename: `${invoice.invoiceNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      });
+    }
+
+    try {
+      return await this.sendMail(email, subject, htmlContent, attachments);
+    } catch (err) {
+      console.error(
+        `[emailService] Failed to send invoice email to ${email}:`,
+        err.message,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Share Contractor Contact Details with Client upon platform fee payment / connection
+   */
+  static async sendContractorConnectionMail({
+    clientEmail,
+    clientName,
+    contractorUser,
+    project,
+    invoice = null,
+  }) {
+    const escapeHtml = (str) =>
+      String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const subject = `Contractor Direct Contact Details Unlocked — ${project?.title || "Your Project"}`;
+
+    const htmlContent = `
+    ${emailOpen("Contractor Connected")}
+    <h2>Hello ${escapeHtml(clientName || "Client")},</h2>
+    <p>
+      You have successfully connected with the contractor for your project: <strong>${escapeHtml(project?.title)}</strong>.
+      Below are the verified contact details to coordinate site visits and material planning directly.
+    </p>
+
+    <div class="info-box">
+      <div class="detail-row">
+        <div class="detail-label">Contractor Name</div>
+        <div class="detail-value"><strong>${escapeHtml(contractorUser.name)}</strong></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Phone / Mobile</div>
+        <div class="detail-value"><strong style="color:#00466a;">${escapeHtml(contractorUser.phone || "Not provided")}</strong></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Email Address</div>
+        <div class="detail-value">${escapeHtml(contractorUser.email)}</div>
+      </div>
+      ${
+        contractorUser.contractor?.companyName
+          ? `
+      <div class="detail-row">
+        <div class="detail-label">Company Name</div>
+        <div class="detail-value">${escapeHtml(contractorUser.contractor.companyName)}</div>
+      </div>
+      `
+          : ""
+      }
+      ${
+        contractorUser.contractor?.yearsExperience
+          ? `
+      <div class="detail-row">
+        <div class="detail-label">Experience</div>
+        <div class="detail-value">${escapeHtml(contractorUser.contractor.yearsExperience)} Years</div>
+      </div>
+      `
+          : ""
+      }
+      <div class="detail-row">
+        <div class="detail-label">Verified Status</div>
+        <div class="detail-value"><span class="badge badge-approved">VERIFIED NOD CONTRACTOR</span></div>
+      </div>
+    </div>
+
+    ${
+      invoice
+        ? `
+    <div class="response-box">
+      <div class="resp-by">Connection Platform Fee Receipt</div>
+      <p>Invoice #${escapeHtml(invoice.invoiceNumber)} — Amount: ₹${Number(invoice.totalAmountPaid).toLocaleString("en-IN")}</p>
+    </div>
+    `
+        : ""
+    }
+
+    <div class="success-box">
+      <span class="icon">📞</span>
+      <p>You may now reach out to the contractor via phone, WhatsApp, or the NOD in-app chat.</p>
+    </div>
+
+    <p style="margin-top:24px;">Best regards,<br/><strong>The ${BRAND_NAME} Team</strong></p>
+    ${emailClose()}
+    `;
+
+    try {
+      return await this.sendMail(clientEmail, subject, htmlContent);
+    } catch (err) {
+      console.error(
+        `[emailService] Failed to send contractor connection email to ${clientEmail}:`,
+        err.message,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Alert Contractor that Client has connected and shared project contact
+   */
+  static async sendContractorAlertMail({
+    contractorEmail,
+    contractorName,
+    clientUser,
+    project,
+  }) {
+    const escapeHtml = (str) =>
+      String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const subject = `New Client Connected for ${project?.title || "Project"} — Contact Details`;
+
+    const htmlContent = `
+    ${emailOpen("New Client Connection")}
+    <h2>Hello ${escapeHtml(contractorName || "Contractor")},</h2>
+    <p>
+      The client for project <strong>${escapeHtml(project?.title)}</strong> has completed connection.
+      Here are the client's contact details so you can coordinate with them:
+    </p>
+
+    <div class="info-box">
+      <div class="detail-row">
+        <div class="detail-label">Client Name</div>
+        <div class="detail-value"><strong>${escapeHtml(clientUser.name)}</strong></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Phone / Mobile</div>
+        <div class="detail-value"><strong style="color:#00466a;">${escapeHtml(clientUser.phone || "Not provided")}</strong></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Email Address</div>
+        <div class="detail-value">${escapeHtml(clientUser.email)}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Project Location</div>
+        <div class="detail-value">${escapeHtml(project?.location || "India")}</div>
+      </div>
+    </div>
+
+    <p style="margin-top:24px;">Best regards,<br/><strong>The ${BRAND_NAME} Team</strong></p>
+    ${emailClose()}
+    `;
+
+    try {
+      return await this.sendMail(contractorEmail, subject, htmlContent);
+    } catch (err) {
+      console.error(
+        `[emailService] Failed to send contractor alert email to ${contractorEmail}:`,
+        err.message,
+      );
+      return null;
+    }
+  }
 }
+
 export default emailService;

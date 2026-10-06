@@ -26,4 +26,12 @@ router.patch("/platform-fee", Auth, verifyAdmin, AdminFinanceController.updatePl
 router.get("/withdrawals", Auth, verifyAdmin, AdminFinanceController.getWithdrawals);
 router.post("/withdrawals/:withdrawalId/status", Auth, verifyAdmin, AdminFinanceController.updateWithdrawalStatus);
 
+// Admin Designer Manual Payout Queue
+router.get("/payouts-queue", Auth, verifyAdmin, AdminFinanceController.getPayoutsQueue);
+router.post("/payouts-queue/:payoutId/confirm", Auth, verifyAdmin, AdminFinanceController.confirmManualPayout);
+
+// Monthly Reports & Multi-Sheet Excel Export
+router.get("/monthly-report", Auth, verifyAdmin, AdminFinanceController.getMonthlyFinancialReport);
+router.get("/export-excel", Auth, verifyAdmin, AdminFinanceController.exportMonthlyExcel);
+
 export default router;

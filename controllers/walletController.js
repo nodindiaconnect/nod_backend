@@ -39,9 +39,13 @@ class WalletController {
     static async updateWithdrawalStatus(req, res, next) {
         try {
             const { withdrawalId } = req.params;
-            const { status, failureReason } = req.body;
+            const { status, failureReason, referenceId, proofImageUrl } = req.body;
             const adminUser = req.user || req.admin;
-            const result = await WalletService.updateWithdrawalStatus(adminUser, withdrawalId, status, failureReason);
+            const result = await WalletService.updateWithdrawalStatus(adminUser, withdrawalId, status, {
+                failureReason,
+                referenceId,
+                proofImageUrl,
+            });
             return helper.success(res, `Withdrawal marked ${status}`, result);
         } catch (error) {
             return helper.failed(res, error.message, {}, error.statusCode || 400);

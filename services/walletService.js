@@ -150,10 +150,14 @@ class WalletService {
     /**
      * Admin/System updates withdrawal status (PROCESSING -> COMPLETED | FAILED)
      */
-    static async updateWithdrawalStatus(adminUser, withdrawalId, status, failureReason = null) {
+    static async updateWithdrawalStatus(adminUser, withdrawalId, status, options = {}) {
         if (!["PROCESSING", "COMPLETED", "FAILED"].includes(status)) {
             throw new Error(`Invalid withdrawal status: ${status}`);
         }
+
+        const failureReason = typeof options === "string" ? options : options.failureReason;
+        const referenceId = options.referenceId || null;
+        const proofImageUrl = options.proofImageUrl || null;
 
         return await prisma.$transaction(async (tx) => {
             const withdrawal = await tx.withdrawal.findUnique({
@@ -187,6 +191,8 @@ class WalletService {
                 data: {
                     status,
                     failureReason: status === "FAILED" ? failureReason : null,
+                    referenceId: referenceId || withdrawal.referenceId,
+                    proofImageUrl: proofImageUrl || withdrawal.proofImageUrl,
                 },
             });
 

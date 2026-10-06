@@ -48,6 +48,7 @@ class BankController {
           bankName: bankDetail.bankName,
           accountType: bankDetail.accountType,
           ifscCode: bankDetail.ifscCode,
+          upiId: bankDetail.upiId || null,
           maskedAccountNumber: maskAccountNumber(bankDetail.accountNumber),
           last4: bankDetail.accountNumber.slice(-4),
           updatedAt: bankDetail.updatedAt,
@@ -80,8 +81,8 @@ class BankController {
       if (accountHolderName.length < 2 || accountHolderName.length > 100) {
         return helper.failed(res, "Account holder name must be between 2 and 100 characters.");
       }
-      if (!/^[a-zA-Z\s\.\']+$/.test(accountHolderName)) {
-        return helper.failed(res, "Account holder name should only contain letters, spaces, and periods.");
+      if (!/^[a-zA-Z0-9\s\.\'\,\&\-]+$/.test(accountHolderName)) {
+        return helper.failed(res, "Account holder name should only contain letters, numbers, spaces, and standard punctuation.");
       }
 
       // 2. Validate Bank Name
@@ -118,6 +119,8 @@ class BankController {
         return helper.failed(res, "Account type must be either SAVINGS or CURRENT.");
       }
 
+      const upiId = req.body.upiId ? String(req.body.upiId).trim() : null;
+
       // 6. Upsert Bank Details
       const updated = await prisma.bankDetail.upsert({
         where: { userId },
@@ -127,6 +130,7 @@ class BankController {
           bankName,
           accountNumber: cleanAccountNumber,
           ifscCode: cleanIfsc,
+          upiId,
           accountType: normalizedAccountType,
         },
         update: {
@@ -134,6 +138,7 @@ class BankController {
           bankName,
           accountNumber: cleanAccountNumber,
           ifscCode: cleanIfsc,
+          upiId,
           accountType: normalizedAccountType,
         },
       });
@@ -146,6 +151,7 @@ class BankController {
           bankName: updated.bankName,
           accountType: updated.accountType,
           ifscCode: updated.ifscCode,
+          upiId: updated.upiId || null,
           maskedAccountNumber: maskAccountNumber(updated.accountNumber),
           last4: updated.accountNumber.slice(-4),
           updatedAt: updated.updatedAt,

@@ -2,6 +2,7 @@ import prisma from "../config/prismaClient.js";
 import helper from "../helper/helper.js";
 import sanitizeData from "../utils/sanitizeHtml.js";
 import ProjectService from "../services/projectService.js";
+import { containsContactInfo } from "../utils/validators.js";
 
 import pkg from "@prisma/client";
 const { Prisma } = pkg;
@@ -46,6 +47,7 @@ const ENUMS = {
     priority: ["URGENT", "NORMAL", "FLEXIBLE"],
     preferredCommunication: ["CHAT"],
     attachmentType: ["FLOOR_PLAN", "PROPERTY_PHOTO", "REFERENCE_IMAGE", "VIDEO"],
+    projectDeliveryType: ["TWO_D", "THREE_D", "TWO_D_PLUS_THREE_D"],
 };
 
 // Free-text fields on the project body that need HTML stripped before
@@ -424,6 +426,18 @@ class ClientController {
                 validateLength(body[field], field, errors);
             });
 
+            FREE_TEXT_FIELDS.forEach((field) => {
+                if (typeof body[field] === "string" && body[field].trim()) {
+                    const contactCheck = containsContactInfo(body[field]);
+                    if (contactCheck.hasContact) {
+                        errors.push({
+                            field,
+                            message: contactCheck.reason || "Sharing phone numbers or email addresses in project details is not permitted.",
+                        });
+                    }
+                }
+            });
+
             validateEnum(body.category, ENUMS.category, "category", errors);
             validateEnum(
                 body.servicesRequired,
@@ -455,6 +469,12 @@ class ClientController {
                 body.preferredCommunication,
                 ENUMS.preferredCommunication,
                 "preferredCommunication",
+                errors
+            );
+            validateEnum(
+                body.projectDeliveryType,
+                ENUMS.projectDeliveryType,
+                "projectDeliveryType",
                 errors
             );
 
@@ -542,6 +562,7 @@ class ClientController {
                     clientId: req.user.id,
                     title: body.title,
                     category: body.category,
+                    projectDeliveryType: body.projectDeliveryType || "TWO_D_PLUS_THREE_D",
                     scope: body.scope || "FULL_PROJECT",
                     servicesRequired: Array.isArray(body.servicesRequired)
                         ? body.servicesRequired
@@ -742,6 +763,18 @@ class ClientController {
             Object.keys(LENGTH_LIMITS).forEach((field) => {
                 if (field === "colorPreferences") return;
                 if (body[field] !== undefined) validateLength(body[field], field, errors);
+            });
+
+            FREE_TEXT_FIELDS.forEach((field) => {
+                if (body[field] !== undefined && typeof body[field] === "string" && body[field].trim()) {
+                    const contactCheck = containsContactInfo(body[field]);
+                    if (contactCheck.hasContact) {
+                        errors.push({
+                            field,
+                            message: contactCheck.reason || "Sharing phone numbers or email addresses in project details is not permitted.",
+                        });
+                    }
+                }
             });
 
             if (body.category !== undefined) validateEnum(body.category, ENUMS.category, "category", errors);

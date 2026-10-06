@@ -10,6 +10,11 @@ model ProjectEscrow {
   platformFeeRate        Float                      @default(5.0)
   platformFeeAmount      Float                      @default(0)
   platformFeePaid        Boolean                    @default(false)
+  nonRefundableRate      Float                      @default(4.0)
+  nonRefundableAmount    Float                      @default(0)
+  designerCommissionRate Float                      @default(5.0)
+  designerCommissionAmount Float                    @default(0)
+  netPlatformEarnings    Float                      @default(0)
   escrowBalance          Float                      @default(0)
   totalReleasedAmount    Float                      @default(0)
   totalRefundedAmount    Float                      @default(0)
@@ -69,13 +74,17 @@ model ProjectDispute {
   adminDecision      String?
   adminNotes         String?
   resolvedBy         User?         @relation("DisputesResolved", fields: [resolvedById], references: [id])
-  resolvedById       String?
-  refundAmountClient Float         @default(0)
-  releaseAmountPro   Float         @default(0)
+  resolvedById                String?
+  refundAmountClient          Float         @default(0)
+  releaseAmountPro            Float         @default(0)
+  adminApprovedDesignerAmount Float         @default(0)
+  calculatedClientRefund      Float         @default(0)
+  settlementNotes             String?
+  settledAt                   DateTime?
 
-  resolvedAt         DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  resolvedAt                  DateTime?
+  createdAt                   DateTime      @default(now())
+  updatedAt                   DateTime      @updatedAt
 
   @@index([escrowId])
   @@index([milestoneId])

@@ -2,6 +2,8 @@ import helper from "../../helper/helper.js";
 import EscrowService from "../../services/escrowService.js";
 import SystemConfigService from "../../services/systemConfigService.js";
 import WalletService from "../../services/walletService.js";
+import FinancialLedgerService from "../../services/financialLedgerService.js";
+import ReportService from "../../services/reportService.js";
 import prisma from "../../config/prismaClient.js";
 
 class AdminFinanceController {
@@ -231,6 +233,73 @@ class AdminFinanceController {
             const adminUser = req.admin || req.user;
             const result = await WalletService.updateWithdrawalStatus(adminUser, withdrawalId, status, failureReason);
             return helper.success(res, `Withdrawal request status updated to ${status}`, result);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
+        }
+    }
+
+    /**
+     * List Admin Designer Manual Payout Queue
+     * GET /api/admin/finance/payouts-queue
+     */
+    static async getPayoutsQueue(req, res, next) {
+        try {
+            const result = await FinancialLedgerService.getAdminPayoutQueue(req.query);
+            return helper.success(res, "Admin payouts queue fetched successfully", result);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
+        }
+    }
+
+    /**
+     * Admin Confirms Manual Designer Payout (Direct Bank / UPI transfer recorded)
+     * POST /api/admin/finance/payouts-queue/:payoutId/confirm
+     */
+    static async confirmManualPayout(req, res, next) {
+        try {
+            const { payoutId } = req.params;
+            const adminUser = req.admin || req.user;
+            const result = await FinancialLedgerService.confirmManualPayout(adminUser, payoutId, req.body);
+            return helper.success(res, "Manual payout confirmed and recorded to ledger successfully", result);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
+        }
+    }
+
+    /**
+     * Monthly Financial Overview & Metrics
+     * GET /api/admin/finance/monthly-report
+     */
+    static async getMonthlyFinancialReport(req, res, next) {
+        try {
+            const { year, month } = req.query;
+            const report = await ReportService.getMonthlyFinancialReport(year, month);
+            return helper.success(res, "Monthly financial report generated successfully", report);
+        } catch (error) {
+            return helper.failed(res, error.message, {}, 400);
+        }
+    }
+
+    /**
+     * Export Multi-Sheet Monthly Excel Financial Report
+     * GET /api/admin/finance/export-excel
+     */
+    static async exportMonthlyExcel(req, res, next) {
+        try {
+            const { year, month } = req.query;
+            const y = year || new Date().getFullYear();
+            const m = month || new Date().getMonth() + 1;
+            const buffer = await ReportService.generateMonthlyExcel(y, m);
+
+            res.setHeader(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="NOD_Financial_Report_${y}_${m}.xlsx"`
+            );
+            return res.send(buffer);
         } catch (error) {
             return helper.failed(res, error.message, {}, 400);
         }
